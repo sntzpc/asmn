@@ -7,10 +7,15 @@ let currentPage = 1;
 let pageSize = 20;
 let filteredNilaiData = [];
 
+// ===== Charts (Chart.js) =====
+let _chartTop10 = null;
+let _chartDistribusi = null;
+
+
 // Konfigurasi Google Apps Script
 // GANTI URL_INI dengan URL Web App Google Apps Script Anda
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbz6_yBjEkUbHqEC_xiOvi3Ux3OTWNHXGoa8BFFMNT6qqYP1JkyBkWfu_n8yPyhdfSeE/exec";
+  "https://script.google.com/macros/s/AKfycbwqgye_c_WXmcIpUFvIXJ7pRl8G_RSMS9WyuOXS7YdSNK-2TtQPnhqwBNSBq1eURs8/exec";
 
 // Initialize application
 document.addEventListener("DOMContentLoaded", function () {
@@ -433,45 +438,68 @@ function populateFilterDropdowns() {
 }
 
 // Handle input form submission
-function handleInputFormSubmit(e) {
+async function handleInputFormSubmit(e) {
   e.preventDefault();
   showSpinner();
 
-  const formData = {
+  const newItem = {
     id: Date.now().toString(),
-    nip: document.getElementById("input-nip").value,
-    nama: document.getElementById("input-nama").value,
-    region: document.getElementById("input-region").value,
-    unit: document.getElementById("input-unit").value,
-    divisi: document.getElementById("input-divisi").value,
-    jabatan: document.getElementById("input-jabatan").value,
-    grade: document.getElementById("input-grade").value,
+    nip: document.getElementById("input-nip").value.trim(),
+    nama: document.getElementById("input-nama").value.trim(),
+    region: document.getElementById("input-region").value.trim(),
+    unit: document.getElementById("input-unit").value.trim(),
+    divisi: document.getElementById("input-divisi").value.trim(),
+    jabatan: document.getElementById("input-jabatan").value.trim(),
+    grade: document.getElementById("input-grade").value.trim(),
     nilaiIsian: parseInt(document.getElementById("input-nilai-isian").value),
     nilaiBKM: parseInt(document.getElementById("input-nilai-bkm").value),
     totalNilai: parseInt(document.getElementById("input-total-nilai").value),
-    inputBy: currentUser.username,
+    inputBy: currentUser?.username || '',
     timestamp: new Date().toISOString(),
-    synced: false,
+    synced: false
   };
 
-  // Validate data
-  if (
-    !formData.nip ||
-    !formData.nama ||
-    isNaN(formData.nilaiIsian) ||
-    isNaN(formData.nilaiBKM)
-  ) {
+  // Validasi dasar
+  if (!newItem.nip || !newItem.nama || isNaN(newItem.nilaiIsian) || isNaN(newItem.nilaiBKM)) {
     hideSpinner();
-    Swal.fire({
-      icon: "error",
-      title: "Data Tidak Lengkap",
-      text: "Harap isi semua field yang wajib!",
-    });
+    await Swal.fire({ icon: "error", title: "Data Tidak Lengkap", text: "Harap isi semua field yang wajib!" });
     return;
   }
 
-  // Add to nilai data
-  nilaiData.push(formData);
+  // Cek duplikasi by NIP
+  const existIdx = nilaiData.findIndex(x => x.nip === newItem.nip && x.unit === newItem.unit && x.region === newItem.region);
+  if (existIdx >= 0) {
+    hideSpinner();
+    const exist = nilaiData[existIdx];
+    const { isConfirmed } = await Swal.fire({
+      icon: "warning",
+      title: "Data sudah ada",
+      html: `
+        <div class="text-start">
+          <p>Data untuk NIP <b>${exist.nip}</b> (${exist.nama}) sudah pernah diinput.</p>
+          <ul class="small">
+            <li>Total lama: <b>${exist.totalNilai}</b> (${exist.nilaiIsian}+${exist.nilaiBKM})</li>
+            <li>Status sync: <b>${exist.synced ? 'Synced' : 'Belum Sync'}</b></li>
+          </ul>
+          <p>Apakah Anda ingin <b>mengganti/mengedit</b> data tersebut dengan nilai baru?</p>
+        </div>
+      `,
+      showCancelButton: true,
+      confirmButtonText: "Ya, ganti",
+      cancelButtonText: "Tidak"
+    });
+    if (!isConfirmed) return;
+
+    // Jika ganti: gunakan ID lama agar upsert ke baris yang sama saat sync
+    newItem.id = exist.id;
+    newItem.synced = false;         // perubahan lokal → perlu sync ulang
+    nilaiData[existIdx] = newItem;
+
+  } else {
+    // Baru
+    nilaiData.push(newItem);
+  }
+
   localStorage.setItem("nilaiData", JSON.stringify(nilaiData));
 
   // Reset form
@@ -480,12 +508,13 @@ function handleInputFormSubmit(e) {
 
   hideSpinner();
 
-  Swal.fire({
-    icon: "success",
-    title: "Data Tersimpan",
-    text: "Data nilai berhasil disimpan!",
-  });
+  await Swal.fire({ icon: "success", title: "Data Tersimpan", text: "Data nilai berhasil disimpan!" });
+
+  // Refresh dashboard/report
+  renderReportTable();
+  updateDashboard();
 }
+
 
 // Calculate total nilai
 function calculateTotalNilai() {
@@ -559,6 +588,14 @@ function handleNipAutocomplete() {
     list.appendChild(div);
   });
 }
+
+// Helper: aman-destroy chart lama
+function destroyChartIfAny(ref) {
+  if (ref && typeof ref.destroy === 'function') {
+    ref.destroy();
+  }
+}
+
 
 // Render report table
 function renderReportTable() {
@@ -917,80 +954,94 @@ function syncAllData() {
 // Fungsi untuk menarik master data dari Google Sheet
 async function pullMasterDataFromGoogleSheets() {
   try {
-    showProgressModal("Menarik data master dari Google Sheet...");
+    showProgressModal("Menarik master & data aktual dari Google Sheet...");
 
-    // Tambahkan filter region/unit jika user punya otorisasi
-    const qs = new URLSearchParams({ action: "getMasterData" });
-    if (currentUser && currentUser.region) qs.set("region", currentUser.region);
-    if (currentUser && currentUser.unit)   qs.set("unit", currentUser.unit);
+    // ===== 1) MASTER
+    const qsMaster = new URLSearchParams({ action: "getMasterData" });
+    if (currentUser?.region) qsMaster.set("region", currentUser.region);
+    if (currentUser?.unit)   qsMaster.set("unit",   currentUser.unit);
 
-    // GET tidak memicu preflight CORS
-    const response = await fetch(`${GAS_URL}?${qs.toString()}`);
-    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
-
-    const result = await response.json();
-
-    if (result.status === "success" && Array.isArray(result.data)) {
-      // Normalisasi masterData (NIP -> string, trim semua field)
-      if (typeof normalizeMasterData === "function") {
-        masterData = normalizeMasterData(result.data);
-      } else {
-        // fallback bila fungsi belum ditambahkan
-        masterData = (result.data || []).map(it => ({
-          Unit:        (it.Unit ?? '').toString().trim(),
-          Region:      (it.Region ?? '').toString().trim(),
-          NIP:         (it.NIP ?? '').toString().trim(),
-          Nama:        (it.Nama ?? '').toString().trim(),
-          Divisi:      (it.Divisi ?? '').toString().trim(),
-          KodeJabatan: (it.KodeJabatan ?? '').toString().trim(),
-          Grade:       (it.Grade ?? '').toString().trim()
-        }));
-      }
-
-      // Simpan ke localStorage
-      localStorage.setItem("masterData", JSON.stringify(masterData));
-      localStorage.setItem("masterDataLastUpdate", new Date().toISOString());
-
-      hideProgressModal();
-
-      Swal.fire({
-        icon: "success",
-        title: "Data Master Diperbarui",
-        text: `Berhasil menarik ${masterData.length} data master dari Google Sheet!`,
-      });
-
-      // Update info sync
-      updateSyncInfo();
-
-      // Bersihkan dropdown filter & user sebelum isi ulang (hindari duplikasi opsi)
-      const toClear = [
-        "filter-region", "filter-unit", "filter-jabatan",
-        "user-region", "user-unit"
-      ];
-      toClear.forEach(id => {
-        const el = document.getElementById(id);
-        if (el) {
-          // Pertahankan option pertama (Semua ...)
-          for (let i = el.options.length - 1; i >= 1; i--) el.remove(i);
-        }
-      });
-
-      // Isi ulang dropdown
-      populateFilterDropdowns();
-
-    } else {
-      throw new Error(result.message || "Gagal mengambil data master");
+    const respMaster = await fetch(`${GAS_URL}?${qsMaster.toString()}`);
+    if (!respMaster.ok) throw new Error(`HTTP Master ${respMaster.status}`);
+    const resMaster = await respMaster.json();
+    if (!(resMaster.status === "success" && Array.isArray(resMaster.data))) {
+      throw new Error(resMaster.message || "Gagal ambil master");
     }
+    masterData = normalizeMasterData(resMaster.data);
+    localStorage.setItem("masterData", JSON.stringify(masterData));
+    localStorage.setItem("masterDataLastUpdate", new Date().toISOString());
+
+    // ===== 2) SCORES (data aktual)
+    updateProgress(35);
+    const qsScores = new URLSearchParams({ action: "getScores" });
+    if (currentUser?.region) qsScores.set("region", currentUser.region);
+    if (currentUser?.unit)   qsScores.set("unit",   currentUser.unit);
+
+    const respScores = await fetch(`${GAS_URL}?${qsScores.toString()}`);
+    if (!respScores.ok) throw new Error(`HTTP Scores ${respScores.status}`);
+    const resScores = await respScores.json();
+    if (!(resScores.status === "success" && Array.isArray(resScores.data))) {
+      throw new Error(resScores.message || "Gagal ambil scores");
+    }
+
+    // Map data Scores dari server → format nilaiData frontend
+    const serverItems = resScores.data.map(r => ({
+      id:        String(r._id || r.id),
+      nip:       String(r.NIP || ''),
+      nama:      String(r.Nama || ''),
+      region:    String(r.Region || ''),
+      unit:      String(r.Unit || ''),
+      divisi:    String(r.Divisi || ''),
+      jabatan:   String(r.KodeJabatan || ''),
+      grade:     String(r.Grade || ''),
+      nilaiIsian: Number(r.NilaiIsian || 0),
+      nilaiBKM:   Number(r.NilaiBKM   || 0),
+      totalNilai: Number(r.Total      || 0),
+      inputBy:    String(r.createdBy  || ''),
+      timestamp:  String(r.createdAt  || new Date().toISOString()),
+      synced:     true,                         // penting: tandai sebagai sudah sinkron
+      syncedAt:   r.syncAt ? String(r.syncAt) : new Date().toISOString()
+    }));
+
+    updateProgress(65);
+
+    // Merge: pertahankan item lokal yang belum synced, hindari duplikat id
+    const localUnsynced = (nilaiData || []).filter(x => !x.synced);
+    const byId = new Map();
+    serverItems.forEach(it => byId.set(it.id, it));
+    localUnsynced.forEach(it => {
+      if (!byId.has(it.id)) byId.set(it.id, it);
+    });
+
+    nilaiData = Array.from(byId.values());
+    localStorage.setItem("nilaiData", JSON.stringify(nilaiData));
+
+    hideProgressModal();
+
+    Swal.fire({
+      icon: "success",
+      title: "Data Terunduh",
+      text: `Master: ${masterData.length} baris, Scores: ${serverItems.length} baris (sinkron).`
+    });
+
+    updateSyncInfo();
+    // Bersihkan & isi ulang dropdown filter
+    ["filter-region","filter-unit","filter-jabatan","user-region","user-unit"].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) for (let i = el.options.length - 1; i >= 1; i--) el.remove(i);
+    });
+    populateFilterDropdowns();
+
+    // Refresh Report & Dashboard
+    renderReportTable();
+    updateDashboard();
   } catch (error) {
     hideProgressModal();
-    console.error("Error pulling master data:", error);
-    Swal.fire({
-      icon: "error",
-      title: "Gagal Menarik Data",
-      text: "Terjadi kesalahan: " + error.message,
-    });
+    console.error("Error pulling data:", error);
+    Swal.fire({ icon: "error", title: "Gagal Tarik Data", text: String(error.message) });
   }
 }
+
 
 // Update fungsi pullMasterData
 function pullMasterData() {
@@ -1162,23 +1213,28 @@ async function syncUsersToGoogleSheets() {
     return false;
   }
 }
+// =====  clearLocalDataWithPassword =====
 async function clearLocalDataWithPassword() {
   if (!currentUser || !currentUser.username) {
     await Swal.fire({ icon: 'error', title: 'Tidak Bisa', text: 'Silakan login dahulu.' });
     return;
   }
 
+  // 1) Verifikasi password via GAS
   const { value: verifiedPwd } = await Swal.fire({
     title: 'Verifikasi Password',
     html: `
       <p class="mb-1">Masukkan password untuk menghapus data lokal:</p>
-      <p class="small text-muted mb-2">Data yang akan dihapus: <strong>Master Data</strong>, <strong>Nilai</strong>, dan <strong>Master Last Update</strong>.</p>
+      <p class="small text-muted mb-2">
+        Data yang akan dihapus: <strong>Master Data</strong>, <strong>Data Nilai</strong>, dan
+        <strong>Master Last Update</strong>.
+      </p>
     `,
     input: 'password',
     inputPlaceholder: 'Password',
     inputAttributes: { autocapitalize: 'off', autocorrect: 'off' },
     showCancelButton: true,
-    confirmButtonText: 'Verifikasi & Hapus',
+    confirmButtonText: 'Verifikasi',
     cancelButtonText: 'Batal',
     showLoaderOnConfirm: true,
     allowOutsideClick: () => !Swal.isLoading(),
@@ -1192,21 +1248,41 @@ async function clearLocalDataWithPassword() {
         });
         const res = await resp.json();
         if (res.status !== 'success') throw new Error(res.message || 'Password salah');
-        return pwd; // kembalikan string password valid
+        return pwd;
       } catch (err) {
         Swal.showValidationMessage(err.message || 'Verifikasi gagal');
         return false;
       }
     }
   });
-
-  // Batal/invalid
   if (!verifiedPwd) return;
 
-  // Beri waktu agar SweetAlert benar-benar menutup DOM-nya
-  await new Promise(r => setTimeout(r, 80));
+  // 2) Pilihan mode hapus
+  const mode = await Swal.fire({
+    icon: 'warning',
+    title: 'Hapus Data Lokal?',
+    html: `
+      <div class="text-start">
+        <p>Anda dapat memilih:</p>
+        <ul class="mb-0">
+          <li><b>Hapus Saja</b> – hanya mengosongkan data lokal.</li>
+          <li><b>Hapus & Tarik Ulang</b> – setelah kosong, sistem akan menarik kembali <i>Master</i> dan <i>Scores</i> dari Google Sheet.</li>
+        </ul>
+      </div>
+    `,
+    showCancelButton: true,
+    showDenyButton: true,
+    confirmButtonText: 'Hapus & Tarik Ulang',
+    denyButtonText: 'Hapus Saja',
+    cancelButtonText: 'Batal'
+  });
+  if (mode.isDismissed) return;
+
+  const rePull = mode.isConfirmed; // true jika "Hapus & Tarik Ulang"
+
+  // 3) Eksekusi hapus + progress modal
   try {
-    // Hapus data lokal (sinkron)
+    // Hapus storage
     localStorage.removeItem('masterData');
     localStorage.removeItem('masterDataLastUpdate');
     localStorage.removeItem('nilaiData');
@@ -1215,26 +1291,28 @@ async function clearLocalDataWithPassword() {
     masterData = [];
     nilaiData  = [];
 
-    // Update UI agar indikator berubah
+    // Reset halaman & refresh UI kosong
+    currentPage = 1;
     updateSyncInfo();
-    await new Promise(r => setTimeout(r, 120)); // beri jeda kecil untuk animasi close
+    renderReportTable();
+    updateDashboard();
 
-    await Swal.fire({
-      icon: 'success',
-      title: 'Berhasil',
-      text: 'Data lokal telah dihapus.'
-    });
+    if (!rePull) {
+      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Data lokal telah dihapus.' });
+    }
 
   } catch (err) {
-    await new Promise(r => setTimeout(r, 120));
+    await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Terjadi kesalahan saat menghapus data lokal.' });
+    return;
+  }
 
-    await Swal.fire({
-      icon: 'error',
-      title: 'Gagal',
-      text: 'Terjadi kesalahan saat menghapus data lokal.'
-    });
+  // 4) Opsional: tarik ulang (Master + Scores) agar Report/Dashboard terisi lagi
+  if (rePull) {
+    // fungsi ini sudah menampilkan Progress Modal sendiri dan akan update UI
+    await pullMasterDataFromGoogleSheets();
   }
 }
+
 
 // Fungsi untuk load users dari Google Sheet
 async function loadUsersFromGoogleSheets() {
@@ -1730,24 +1808,70 @@ function updateTopScoresTable(data, count) {
 
 // Update charts
 function updateCharts(data) {
-  // In a real implementation, this would use a charting library
-  // For now, we'll just show placeholder text
-  document.getElementById("top-score-chart").innerHTML = `
-                <div class="text-center p-4">
-                    <i class="fas fa-chart-bar fa-3x text-muted mb-3"></i>
-                    <p>Grafik Top 10 Nilai Tertinggi</p>
-                    <p class="small text-muted">(Implementasi chart library diperlukan)</p>
-                </div>
-            `;
+  // Ambil Top 10 berdasarkan totalNilai
+  const top10 = [...data]
+    .sort((a,b) => b.totalNilai - a.totalNilai)
+    .slice(0, 10);
 
-  document.getElementById("score-distribution-chart").innerHTML = `
-                <div class="text-center p-4">
-                    <i class="fas fa-chart-pie fa-3x text-muted mb-3"></i>
-                    <p>Grafik Distribusi Nilai</p>
-                    <p class="small text-muted">(Implementasi chart library diperlukan)</p>
-                </div>
-            `;
+  // ===== Bar: Top 10 Nilai Tertinggi =====
+  const topLabels = top10.map(x => `${x.nama} (${x.nip})`);
+  const topValues = top10.map(x => x.totalNilai);
+
+  const ctxTop = document.getElementById('topScoreCanvas').getContext('2d');
+  destroyChartIfAny(_chartTop10);
+  _chartTop10 = new Chart(ctxTop, {
+    type: 'bar',
+    data: {
+      labels: topLabels,
+      datasets: [{ label: 'Total Nilai', data: topValues }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: { callbacks: { label: c => ` ${c.parsed.y}` } }
+      },
+      scales: {
+        x: { ticks: { maxRotation: 60, minRotation: 0, autoSkip: false } },
+        y: { beginAtZero: true, suggestedMax: 100 }
+      }
+    }
+  });
+
+  // ===== Pie/Doughnut: Distribusi Nilai (bucket) =====
+  // Kelompokkan Total Nilai ke bucket: <50, 50-59, 60-69, 70-79, 80-89, >=90
+  const buckets = [
+    { label: '< 50',    min: -Infinity, max: 49 },
+    { label: '50–59',   min: 50, max: 59 },
+    { label: '60–69',   min: 60, max: 69 },
+    { label: '70–79',   min: 70, max: 79 },
+    { label: '80–89',   min: 80, max: 89 },
+    { label: '≥ 90',    min: 90, max: Infinity },
+  ];
+  const bucketCounts = buckets.map(b =>
+    data.filter(x => x.totalNilai >= b.min && x.totalNilai <= b.max).length
+  );
+
+  const ctxPie = document.getElementById('scoreDistributionCanvas').getContext('2d');
+  destroyChartIfAny(_chartDistribusi);
+  _chartDistribusi = new Chart(ctxPie, {
+    type: 'doughnut',
+    data: {
+      labels: buckets.map(b => b.label),
+      datasets: [{ data: bucketCounts }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom' }
+      },
+      cutout: '55%'
+    }
+  });
 }
+
 
 // Show spinner
 function showSpinner() {
