@@ -273,6 +273,9 @@ async function handleLogin(e) {
       document.getElementById("current-user").textContent =
         currentUser.username;
 
+        const cuMobile = document.getElementById("current-user-mobile");
+        if (cuMobile) cuMobile.textContent = currentUser.username;
+
       // Hide login modal
       const loginModal = bootstrap.Modal.getInstance(
         document.getElementById("loginModal")
@@ -506,9 +509,23 @@ async function handleInputFormSubmit(e) {
   document.getElementById("input-form").reset();
   document.getElementById("input-total-nilai").value = "";
 
-  hideSpinner();
+hideSpinner();
 
-  await Swal.fire({ icon: "success", title: "Data Tersimpan", text: "Data nilai berhasil disimpan!" });
+await Swal.fire({
+  icon: "success",
+  title: "Data Tersimpan",
+  text: "Data nilai berhasil disimpan!",
+});
+
+// beri sedikit jeda agar backdrop benar2 hilang
+setTimeout(() => {
+  const nipInput = document.getElementById("input-nip");
+  if (nipInput) {
+    nipInput.focus();
+    // nipInput.select(); // opsional: pilih semua teks di desktop
+    // nipInput.scrollIntoView({ block: "center", behavior: "smooth" }); // opsional
+  }
+}, 50);
 
   // Refresh dashboard/report
   renderReportTable();

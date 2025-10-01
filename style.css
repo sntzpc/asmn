@@ -284,3 +284,20 @@ body {
   background-color: var(--primary-color) !important;
   color: #ffffff;
 }
+
+/* Tata letak tombol user & sidebar di mobile */
+@media (max-width: 991.98px) {
+  .navbar .mobile-menu-btn {
+    border: none;
+    padding: .25rem .5rem;
+  }
+  .navbar .mobile-menu-btn i {
+    font-size: 1.25rem;
+  }
+  #userMenuBtn.btn {
+    padding: .25rem .5rem;
+    border-color: rgba(255,255,255,.25);
+    background: rgba(255,255,255,.05);
+  }
+}
+

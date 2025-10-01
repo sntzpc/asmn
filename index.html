@@ -1,584 +1,797 @@
 <!DOCTYPE html>
 <html lang="id">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Uji Kompetensi Mandor - Karyamas Plantation</title>
-    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="style.css">
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='2' font-size='56'%3E📝%3C/text%3E%3C/svg%3E" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    />
+    <link rel="stylesheet" href="style.css" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='2' font-size='56'%3E📝%3C/text%3E%3C/svg%3E"
+    />
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-
-</head>
-<body>
+  </head>
+  <body>
     <!-- Navbar -->
     <nav class="navbar navbar-expand-lg navbar-dark bg-dark fixed-top">
-        <div class="container-fluid">
-            <a class="navbar-brand" href="#">
-                <i class="fas fa-tree"></i> Uji Kompetensi Mandor
-            </a>
-            <button class="navbar-toggler mobile-menu-btn" type="button">
-                <span class="navbar-toggler-icon"></span>
+      <div class="container-fluid">
+        <a class="navbar-brand" href="#">
+          <i class="fas fa-tree"></i> Karyamas Plantation
+        </a>
+
+        <!-- Kanan: tombol dropdown user + tombol sidebar -->
+        <div class="d-flex ms-auto align-items-center gap-2">
+          <!-- Dropdown User dengan chevron -->
+          <div class="dropdown">
+            <button
+              class="btn btn-sm btn-outline-light d-flex align-items-center"
+              type="button"
+              id="userMenuBtn"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              <i class="fas fa-user-circle me-2"></i>
+              <!-- Nama tampil di ≥sm, disembunyikan di xs -->
+              <span id="current-user" class="me-1 d-none d-sm-inline"
+                >Admin</span
+              >
+              <i class="fas fa-chevron-down"></i>
             </button>
-            <div class="collapse navbar-collapse">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item dropdown">
-                        <a class="nav-link dropdown-toggle" href="#" id="navbarDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-                            <i class="fas fa-user-circle"></i> <span id="current-user">Admin</span>
-                        </a>
-                        <ul class="dropdown-menu" aria-labelledby="navbarDropdown">
-                            <li><a class="dropdown-item" href="#" id="logout-btn"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
-                        </ul>
-                    </li>
-                </ul>
-            </div>
+            <ul
+              class="dropdown-menu dropdown-menu-end"
+              aria-labelledby="userMenuBtn"
+            >
+              <!-- Di layar kecil, munculkan nama di header dropdown -->
+              <li>
+                <h6 class="dropdown-header d-sm-none" id="current-user-mobile">
+                  Admin
+                </h6>
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" id="logout-btn">
+                  <i class="fas fa-sign-out-alt me-2"></i>Logout
+                </a>
+              </li>
+            </ul>
+          </div>
+
+          <!-- Toggler: BUKA/TUTUP SIDEBAR (satu-satunya hamburger) -->
+          <button
+            class="navbar-toggler mobile-menu-btn"
+            type="button"
+            aria-label="Toggle sidebar"
+          >
+            <i class="fas fa-bars"></i>
+          </button>
         </div>
+      </div>
     </nav>
 
     <!-- Sidebar -->
     <div class="sidebar" id="sidebar">
-        <ul class="nav flex-column">
-            <li class="nav-item">
-                <a class="nav-link active" href="#" data-page="dashboard">
-                    <i class="fas fa-tachometer-alt"></i> <span>Dashboard</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#" data-page="input">
-                    <i class="fas fa-edit"></i> <span>Input Nilai</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#" data-page="report">
-                    <i class="fas fa-table"></i> <span>Report</span>
-                </a>
-            </li>
-            <li class="nav-item">
-                <a class="nav-link" href="#" data-page="sync">
-                    <i class="fas fa-sync"></i> <span>Sync Data</span>
-                </a>
-            </li>
-            <li class="nav-item admin-only">
-                <a class="nav-link" href="#" data-page="setting">
-                    <i class="fas fa-cog"></i> <span>Setting</span>
-                </a>
-            </li>
-        </ul>
+      <ul class="nav flex-column">
+        <li class="nav-item">
+          <a class="nav-link active" href="#" data-page="dashboard">
+            <i class="fas fa-tachometer-alt"></i> <span>Dashboard</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" data-page="input">
+            <i class="fas fa-edit"></i> <span>Input Nilai</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" data-page="report">
+            <i class="fas fa-table"></i> <span>Report</span>
+          </a>
+        </li>
+        <li class="nav-item">
+          <a class="nav-link" href="#" data-page="sync">
+            <i class="fas fa-sync"></i> <span>Sync Data</span>
+          </a>
+        </li>
+        <li class="nav-item admin-only">
+          <a class="nav-link" href="#" data-page="setting">
+            <i class="fas fa-cog"></i> <span>Setting</span>
+          </a>
+        </li>
+      </ul>
     </div>
 
     <!-- Main Content -->
     <div class="main-content" id="main-content">
-        <!-- Dashboard Page -->
-        <div class="page" id="dashboard-page">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Dashboard</h1>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <div class="btn-group me-2">
-                        <select class="form-select" id="filter-region">
-                            <option value="">Semua Region</option>
-                        </select>
-                    </div>
-                    <div class="btn-group me-2">
-                        <select class="form-select" id="filter-unit">
-                            <option value="">Semua Unit</option>
-                        </select>
-                    </div>
-                    <div class="btn-group me-2">
-                        <select class="form-select" id="filter-jabatan">
-                            <option value="">Semua Jabatan</option>
-                        </select>
-                    </div>
-                    <div class="btn-group">
-                        <select class="form-select" id="filter-count">
-                            <option value="10">10 Data</option>
-                            <option value="20" selected>20 Data</option>
-                            <option value="50">50 Data</option>
-                            <option value="100">100 Data</option>
-                        </select>
-                    </div>
-                </div>
+      <!-- Dashboard Page -->
+      <div class="page" id="dashboard-page">
+        <div
+          class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+        >
+          <h1 class="h2">Dashboard</h1>
+          <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group me-2">
+              <select class="form-select" id="filter-region">
+                <option value="">Semua Region</option>
+              </select>
             </div>
-
-            <div class="row">
-                <div class="col-md-3">
-                    <div class="stat-card primary">
-                        <div class="number" id="total-mandor">0</div>
-                        <div class="label">Total Mandor</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card secondary">
-                        <div class="number" id="avg-nilai">0</div>
-                        <div class="label">Rata-rata Nilai</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card accent">
-                        <div class="number" id="nilai-tertinggi">0</div>
-                        <div class="label">Nilai Tertinggi</div>
-                    </div>
-                </div>
-                <div class="col-md-3">
-                    <div class="stat-card primary">
-                        <div class="number" id="nilai-terendah">0</div>
-                        <div class="label">Nilai Terendah</div>
-                    </div>
-                </div>
+            <div class="btn-group me-2">
+              <select class="form-select" id="filter-unit">
+                <option value="">Semua Unit</option>
+              </select>
             </div>
-
-            <div class="row mt-4">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-chart-bar"></i> Top 10 Nilai Tertinggi
-                        </div>
-                        <div class="card-body">
-                            <canvas id="topScoreCanvas" height="220"></canvas>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-chart-pie"></i> Distribusi Nilai
-                        </div>
-                        <div class="card-body">
-                            <canvas id="scoreDistributionCanvas" height="220"></canvas>
-                        </div>
-                    </div>
-                </div>
+            <div class="btn-group me-2">
+              <select class="form-select" id="filter-jabatan">
+                <option value="">Semua Jabatan</option>
+              </select>
             </div>
-
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-table"></i> Data Nilai Terbaik
-                        </div>
-                        <div class="card-body">
-                            <div class="table-responsive">
-                                <table class="table table-striped table-hover" id="top-scores-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Rank</th>
-                                            <th>NIP</th>
-                                            <th>Nama</th>
-                                            <th>Unit</th>
-                                            <th>Region</th>
-                                            <th>Divisi</th>
-                                            <th>Jabatan</th>
-                                            <th>Nilai Isian</th>
-                                            <th>Nilai BKM</th>
-                                            <th>Total Nilai</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody>
-                                        <!-- Data akan diisi oleh JavaScript -->
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+            <div class="btn-group">
+              <select class="form-select" id="filter-count">
+                <option value="10">10 Data</option>
+                <option value="20" selected>20 Data</option>
+                <option value="50">50 Data</option>
+                <option value="100">100 Data</option>
+              </select>
             </div>
+          </div>
         </div>
 
-        <!-- Input Page -->
-        <div class="page d-none" id="input-page">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Input Nilai</h1>
+        <div class="row">
+          <div class="col-md-3">
+            <div class="stat-card primary">
+              <div class="number" id="total-mandor">0</div>
+              <div class="label">Total Mandor</div>
             </div>
-
-            <div class="row">
-                <div class="col-md-8">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-edit"></i> Form Input Nilai
-                        </div>
-                        <div class="card-body">
-                            <form id="input-form">
-                                <div class="row mb-3">
-  <div class="col-md-6 position-relative">
-    <label for="input-nip" class="form-label">NIP</label>
-    <input type="text" class="form-control" id="input-nip" placeholder="Masukkan NIP" autocomplete="off">
-    <!-- LIST AUTOCOMPLETE NIP -->
-    <div id="autocomplete-nip-list" class="autocomplete-items"></div>
-  </div>
-  <div class="col-md-6 position-relative">
-    <label for="input-nama" class="form-label">Nama</label>
-    <input type="text" class="form-control" id="input-nama" placeholder="Masukkan Nama" autocomplete="off">
-    <!-- LIST AUTOCOMPLETE NAMA -->
-    <div id="autocomplete-nama-list" class="autocomplete-items"></div>
-  </div>
-</div>
-                                <div class="row mb-3">
-                                    <div class="col-md-4">
-                                        <label for="input-region" class="form-label">Region</label>
-                                        <input type="text" class="form-control" id="input-region" placeholder="Region">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="input-unit" class="form-label">Unit</label>
-                                        <input type="text" class="form-control" id="input-unit" placeholder="Unit">
-                                    </div>
-                                    <div class="col-md-4">
-                                        <label for="input-divisi" class="form-label">Divisi</label>
-                                        <input type="text" class="form-control" id="input-divisi" placeholder="Divisi">
-                                    </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <label for="input-jabatan" class="form-label">Kode Jabatan</label>
-                                        <input type="text" class="form-control" id="input-jabatan" placeholder="Kode Jabatan">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label for="input-grade" class="form-label">Grade</label>
-                                        <input type="text" class="form-control" id="input-grade" placeholder="Grade">
-                                    </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-md-6">
-                                        <label for="input-nilai-isian" class="form-label">Nilai Isian</label>
-                                        <input type="number" class="form-control" id="input-nilai-isian" min="0" max="100" placeholder="0-100">
-                                    </div>
-                                    <div class="col-md-6">
-                                        <label for="input-nilai-bkm" class="form-label">Nilai BKM</label>
-                                        <input type="number" class="form-control" id="input-nilai-bkm" min="0" max="100" placeholder="0-100">
-                                    </div>
-                                </div>
-                                <div class="row mb-3">
-                                    <div class="col-md-12">
-                                        <label for="input-total-nilai" class="form-label">Total Nilai</label>
-                                        <input type="number" class="form-control" id="input-total-nilai" readonly>
-                                    </div>
-                                </div>
-                                <div class="d-grid gap-2">
-                                    <button type="submit" class="btn btn-primary btn-lg">
-                                        <i class="fas fa-save"></i> Simpan Data
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-info-circle"></i> Informasi
-                        </div>
-                        <div class="card-body">
-                            <p>Isi form untuk menginput nilai uji kompetensi mandor.</p>
-                            <p>Field dengan tanda <span class="text-danger">*</span> wajib diisi.</p>
-                            <p>Jika tidak ada data dari master data, terus diinput secara manual di semua Field.</p>
-                            <p>Nilai Isian dan Nilai BKM harus antara 0-100.</p>
-                            <p>Total Nilai akan dihitung otomatis.</p>
-                        </div>
-                    </div>
-                </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card secondary">
+              <div class="number" id="avg-nilai">0</div>
+              <div class="label">Rata-rata Nilai</div>
             </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card accent">
+              <div class="number" id="nilai-tertinggi">0</div>
+              <div class="label">Nilai Tertinggi</div>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="stat-card primary">
+              <div class="number" id="nilai-terendah">0</div>
+              <div class="label">Nilai Terendah</div>
+            </div>
+          </div>
         </div>
 
-        <!-- Report Page -->
-        <div class="page d-none" id="report-page">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Report</h1>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <div class="btn-group me-2">
-                        <button class="btn btn-sm btn-outline-secondary" id="export-excel">
-                            <i class="fas fa-file-excel"></i> Export Excel
-                        </button>
-                    </div>
-                    <div class="btn-group me-2">
-                        <button class="btn btn-sm btn-outline-primary" id="sync-selected">
-                            <i class="fas fa-sync"></i> Sync Selected
-                        </button>
-                    </div>
-                    <div class="btn-group">
-                        <button class="btn btn-sm btn-outline-success" id="sync-all">
-                            <i class="fas fa-sync-alt"></i> Sync All
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mb-3">
-                <div class="col-md-3">
-                    <input type="text" class="form-control" id="search-report" placeholder="Cari...">
-                </div>
-                <div class="col-md-2">
-                    <select class="form-select" id="page-size">
-                        <option value="20">20 Data</option>
-                        <option value="50">50 Data</option>
-                        <option value="100">100 Data</option>
-                        <option value="500">500 Data</option>
-                    </select>
-                </div>
-            </div>
-
+        <div class="row mt-4">
+          <div class="col-md-6">
             <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-table"></i> Data Nilai Uji Kompetensi
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover" id="report-table">
-                            <thead>
-                                <tr>
-                                    <th width="30">
-                                        <input type="checkbox" id="select-all">
-                                    </th>
-                                    <th>NIP</th>
-                                    <th>Nama</th>
-                                    <th>Region</th>
-                                    <th>Unit</th>
-                                    <th>Divisi</th>
-                                    <th>Jabatan</th>
-                                    <th>Grade</th>
-                                    <th>Nilai Isian</th>
-                                    <th>Nilai BKM</th>
-                                    <th>Total Nilai</th>
-                                    <th>Status Sync</th>
-                                    <th>Input By</th>
-                                    <th>Timestamp</th>
-                                    <th width="100">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data akan diisi oleh JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                    <nav aria-label="Page navigation">
-                        <ul class="pagination justify-content-center" id="pagination">
-                            <!-- Pagination akan diisi oleh JavaScript -->
-                        </ul>
-                    </nav>
-                </div>
+              <div class="card-header">
+                <i class="fas fa-chart-bar"></i> Top 10 Nilai Tertinggi
+              </div>
+              <div class="card-body">
+                <canvas id="topScoreCanvas" height="220"></canvas>
+              </div>
             </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-chart-pie"></i> Distribusi Nilai
+              </div>
+              <div class="card-body">
+                <canvas id="scoreDistributionCanvas" height="220"></canvas>
+              </div>
+            </div>
+          </div>
         </div>
 
-        <!-- Sync Page -->
-        <div class="page d-none" id="sync-page">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Sync Data</h1>
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-table"></i> Data Nilai Terbaik
+              </div>
+              <div class="card-body">
+                <div class="table-responsive">
+                  <table
+                    class="table table-striped table-hover"
+                    id="top-scores-table"
+                  >
+                    <thead>
+                      <tr>
+                        <th>Rank</th>
+                        <th>NIP</th>
+                        <th>Nama</th>
+                        <th>Unit</th>
+                        <th>Region</th>
+                        <th>Divisi</th>
+                        <th>Jabatan</th>
+                        <th>Nilai Isian</th>
+                        <th>Nilai BKM</th>
+                        <th>Total Nilai</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <!-- Data akan diisi oleh JavaScript -->
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <div class="row">
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-cloud-download-alt"></i> Tarik Master Data
-                        </div>
-                        <div class="card-body">
-                            <p>Tarik data master dari Google Sheet untuk disimpan di local storage.</p>
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-primary" id="pull-master-data">
-                                    <i class="fas fa-download"></i> Tarik Master Data
-                                </button>
-                            </div>
-                            <div class="d-grid gap-2 mt-2">
-  <button class="btn btn-outline-danger" id="clear-local-data">
-    <i class="fas fa-trash-alt"></i> Hapus Data Lokal
-  </button>
-</div>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-6">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-upload"></i> Upload Master Data
-                        </div>
-                        <div class="card-body">
-                            <p>Upload file Excel master data untuk disimpan di local storage.</p>
-                            <div class="mb-3">
-                                <input class="form-control" type="file" id="upload-master-file" accept=".xlsx, .xls">
-                            </div>
-                            <div class="d-grid gap-2">
-                                <button class="btn btn-success" id="upload-master-data">
-                                    <i class="fas fa-upload"></i> Upload Master Data
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="row mt-4">
-                <div class="col-12">
-                    <div class="card">
-                        <div class="card-header">
-                            <i class="fas fa-info-circle"></i> Informasi Sync
-                        </div>
-                        <div class="card-body">
-                            <div class="row">
-                                <div class="col-md-6">
-                                    <h5>Master Data</h5>
-                                    <p>Jumlah Data: <span id="master-data-count">0</span></p>
-                                    <p>Terakhir Update: <span id="master-data-last-update">-</span></p>
-                                </div>
-                                <div class="col-md-6">
-                                    <h5>Data Nilai</h5>
-                                    <p>Jumlah Data: <span id="nilai-data-count">0</span></p>
-                                    <p>Data Belum Sync: <span id="unsynced-data-count">0</span></p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
+      <!-- Input Page -->
+      <div class="page d-none" id="input-page">
+        <div
+          class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+        >
+          <h1 class="h2">Input Nilai</h1>
         </div>
 
-        <!-- Setting Page -->
-        <div class="page d-none" id="setting-page">
-            <div class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom">
-                <h1 class="h2">Setting</h1>
-                <div class="btn-toolbar mb-2 mb-md-0">
-                    <button class="btn btn-sm btn-primary" id="add-user-btn">
-                        <i class="fas fa-plus"></i> Tambah User
+        <div class="row">
+          <div class="col-md-8">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-edit"></i> Form Input Nilai
+              </div>
+              <div class="card-body">
+                <form id="input-form">
+                  <div class="row mb-3">
+                    <div class="col-md-6 position-relative">
+                      <label for="input-nip" class="form-label">NIP</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-nip"
+                        placeholder="Masukkan NIP"
+                        autocomplete="off"
+                      />
+                      <!-- LIST AUTOCOMPLETE NIP -->
+                      <div
+                        id="autocomplete-nip-list"
+                        class="autocomplete-items"
+                      ></div>
+                    </div>
+                    <div class="col-md-6 position-relative">
+                      <label for="input-nama" class="form-label">Nama</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-nama"
+                        placeholder="Masukkan Nama"
+                        autocomplete="off"
+                      />
+                      <!-- LIST AUTOCOMPLETE NAMA -->
+                      <div
+                        id="autocomplete-nama-list"
+                        class="autocomplete-items"
+                      ></div>
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <div class="col-md-4">
+                      <label for="input-region" class="form-label"
+                        >Region</label
+                      >
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-region"
+                        placeholder="Region"
+                      />
+                    </div>
+                    <div class="col-md-4">
+                      <label for="input-unit" class="form-label">Unit</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-unit"
+                        placeholder="Unit"
+                      />
+                    </div>
+                    <div class="col-md-4">
+                      <label for="input-divisi" class="form-label"
+                        >Divisi</label
+                      >
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-divisi"
+                        placeholder="Divisi"
+                      />
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <div class="col-md-6">
+                      <label for="input-jabatan" class="form-label"
+                        >Kode Jabatan</label
+                      >
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-jabatan"
+                        placeholder="Kode Jabatan"
+                      />
+                    </div>
+                    <div class="col-md-6">
+                      <label for="input-grade" class="form-label">Grade</label>
+                      <input
+                        type="text"
+                        class="form-control"
+                        id="input-grade"
+                        placeholder="Grade"
+                      />
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <div class="col-md-6">
+                      <label for="input-nilai-isian" class="form-label"
+                        >Nilai Isian</label
+                      >
+                      <input
+                        type="number"
+                        class="form-control"
+                        id="input-nilai-isian"
+                        min="0"
+                        max="100"
+                        placeholder="0-100"
+                      />
+                    </div>
+                    <div class="col-md-6">
+                      <label for="input-nilai-bkm" class="form-label"
+                        >Nilai BKM</label
+                      >
+                      <input
+                        type="number"
+                        class="form-control"
+                        id="input-nilai-bkm"
+                        min="0"
+                        max="100"
+                        placeholder="0-100"
+                      />
+                    </div>
+                  </div>
+                  <div class="row mb-3">
+                    <div class="col-md-12">
+                      <label for="input-total-nilai" class="form-label"
+                        >Total Nilai</label
+                      >
+                      <input
+                        type="number"
+                        class="form-control"
+                        id="input-total-nilai"
+                        readonly
+                      />
+                    </div>
+                  </div>
+                  <div class="d-grid gap-2">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                      <i class="fas fa-save"></i> Simpan Data
                     </button>
-                </div>
+                  </div>
+                </form>
+              </div>
             </div>
-
+          </div>
+          <div class="col-md-4">
             <div class="card">
-                <div class="card-header">
-                    <i class="fas fa-users"></i> Manajemen User
-                </div>
-                <div class="card-body">
-                    <div class="table-responsive">
-                        <table class="table table-striped table-hover" id="user-table">
-                            <thead>
-                                <tr>
-                                    <th>Username</th>
-                                    <th>Role</th>
-                                    <th>Region</th>
-                                    <th>Unit</th>
-                                    <th>Status</th>
-                                    <th width="150">Aksi</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <!-- Data akan diisi oleh JavaScript -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+              <div class="card-header">
+                <i class="fas fa-info-circle"></i> Informasi
+              </div>
+              <div class="card-body">
+                <p>Isi form untuk menginput nilai uji kompetensi mandor.</p>
+                <p>
+                  Field dengan tanda <span class="text-danger">*</span> wajib
+                  diisi.
+                </p>
+                <p>
+                  Jika tidak ada data dari master data, terus diinput secara
+                  manual di semua Field.
+                </p>
+                <p>Nilai Isian dan Nilai BKM harus antara 0-100.</p>
+                <p>Total Nilai akan dihitung otomatis.</p>
+              </div>
             </div>
+          </div>
         </div>
+      </div>
+
+      <!-- Report Page -->
+      <div class="page d-none" id="report-page">
+        <div
+          class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+        >
+          <h1 class="h2">Report</h1>
+          <div class="btn-toolbar mb-2 mb-md-0">
+            <div class="btn-group me-2">
+              <button
+                class="btn btn-sm btn-outline-secondary"
+                id="export-excel"
+              >
+                <i class="fas fa-file-excel"></i> Export Excel
+              </button>
+            </div>
+            <div class="btn-group me-2">
+              <button class="btn btn-sm btn-outline-primary" id="sync-selected">
+                <i class="fas fa-sync"></i> Sync Selected
+              </button>
+            </div>
+            <div class="btn-group">
+              <button class="btn btn-sm btn-outline-success" id="sync-all">
+                <i class="fas fa-sync-alt"></i> Sync All
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div class="row mb-3">
+          <div class="col-md-3">
+            <input
+              type="text"
+              class="form-control"
+              id="search-report"
+              placeholder="Cari..."
+            />
+          </div>
+          <div class="col-md-2">
+            <select class="form-select" id="page-size">
+              <option value="20">20 Data</option>
+              <option value="50">50 Data</option>
+              <option value="100">100 Data</option>
+              <option value="500">500 Data</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-table"></i> Data Nilai Uji Kompetensi
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped table-hover" id="report-table">
+                <thead>
+                  <tr>
+                    <th width="30">
+                      <input type="checkbox" id="select-all" />
+                    </th>
+                    <th>NIP</th>
+                    <th>Nama</th>
+                    <th>Region</th>
+                    <th>Unit</th>
+                    <th>Divisi</th>
+                    <th>Jabatan</th>
+                    <th>Grade</th>
+                    <th>Nilai Isian</th>
+                    <th>Nilai BKM</th>
+                    <th>Total Nilai</th>
+                    <th>Status Sync</th>
+                    <th>Input By</th>
+                    <th>Timestamp</th>
+                    <th width="100">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Data akan diisi oleh JavaScript -->
+                </tbody>
+              </table>
+            </div>
+            <nav aria-label="Page navigation">
+              <ul class="pagination justify-content-center" id="pagination">
+                <!-- Pagination akan diisi oleh JavaScript -->
+              </ul>
+            </nav>
+          </div>
+        </div>
+      </div>
+
+      <!-- Sync Page -->
+      <div class="page d-none" id="sync-page">
+        <div
+          class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+        >
+          <h1 class="h2">Sync Data</h1>
+        </div>
+
+        <div class="row">
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-cloud-download-alt"></i> Tarik Master Data
+              </div>
+              <div class="card-body">
+                <p>
+                  Tarik data master dari Google Sheet untuk disimpan di local
+                  storage.
+                </p>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-primary" id="pull-master-data">
+                    <i class="fas fa-download"></i> Tarik Master Data
+                  </button>
+                </div>
+                <div class="d-grid gap-2 mt-2">
+                  <button class="btn btn-outline-danger" id="clear-local-data">
+                    <i class="fas fa-trash-alt"></i> Hapus Data Lokal
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-upload"></i> Upload Master Data
+              </div>
+              <div class="card-body">
+                <p>
+                  Upload file Excel master data untuk disimpan di local storage.
+                </p>
+                <div class="mb-3">
+                  <input
+                    class="form-control"
+                    type="file"
+                    id="upload-master-file"
+                    accept=".xlsx, .xls"
+                  />
+                </div>
+                <div class="d-grid gap-2">
+                  <button class="btn btn-success" id="upload-master-data">
+                    <i class="fas fa-upload"></i> Upload Master Data
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="row mt-4">
+          <div class="col-12">
+            <div class="card">
+              <div class="card-header">
+                <i class="fas fa-info-circle"></i> Informasi Sync
+              </div>
+              <div class="card-body">
+                <div class="row">
+                  <div class="col-md-6">
+                    <h5>Master Data</h5>
+                    <p>Jumlah Data: <span id="master-data-count">0</span></p>
+                    <p>
+                      Terakhir Update:
+                      <span id="master-data-last-update">-</span>
+                    </p>
+                  </div>
+                  <div class="col-md-6">
+                    <h5>Data Nilai</h5>
+                    <p>Jumlah Data: <span id="nilai-data-count">0</span></p>
+                    <p>
+                      Data Belum Sync: <span id="unsynced-data-count">0</span>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Setting Page -->
+      <div class="page d-none" id="setting-page">
+        <div
+          class="d-flex justify-content-between flex-wrap flex-md-nowrap align-items-center pt-3 pb-2 mb-3 border-bottom"
+        >
+          <h1 class="h2">Setting</h1>
+          <div class="btn-toolbar mb-2 mb-md-0">
+            <button class="btn btn-sm btn-primary" id="add-user-btn">
+              <i class="fas fa-plus"></i> Tambah User
+            </button>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <i class="fas fa-users"></i> Manajemen User
+          </div>
+          <div class="card-body">
+            <div class="table-responsive">
+              <table class="table table-striped table-hover" id="user-table">
+                <thead>
+                  <tr>
+                    <th>Username</th>
+                    <th>Role</th>
+                    <th>Region</th>
+                    <th>Unit</th>
+                    <th>Status</th>
+                    <th width="150">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <!-- Data akan diisi oleh JavaScript -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <!-- Login Modal -->
-    <div class="modal fade login-modal" id="loginModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="loginModalLabel" aria-hidden="true">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="loginModalLabel">
-                        <i class="fas fa-tree"></i> Login
-                    </h5>
-                </div>
-                <div class="modal-body">
-                    <form id="login-form">
-                        <div class="mb-3">
-                            <label for="login-username" class="form-label">Username</label>
-                            <input type="text" class="form-control" id="login-username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="login-password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="login-password" required>
-                        </div>
-                        <div class="d-grid gap-2">
-                            <button type="submit" class="btn btn-primary btn-lg">
-                                <i class="fas fa-sign-in-alt"></i> Login
-                            </button>
-                        </div>
-                    </form>
-                </div>
-            </div>
+    <div
+      class="modal fade login-modal"
+      id="loginModal"
+      data-bs-backdrop="static"
+      data-bs-keyboard="false"
+      tabindex="-1"
+      aria-labelledby="loginModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="loginModalLabel">
+              <i class="fas fa-tree"></i> Login
+            </h5>
+          </div>
+          <div class="modal-body">
+            <form id="login-form">
+              <div class="mb-3">
+                <label for="login-username" class="form-label">Username</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="login-username"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="login-password" class="form-label">Password</label>
+                <input
+                  type="password"
+                  class="form-control"
+                  id="login-password"
+                  required
+                />
+              </div>
+              <div class="d-grid gap-2">
+                <button type="submit" class="btn btn-primary btn-lg">
+                  <i class="fas fa-sign-in-alt"></i> Login
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
+      </div>
     </div>
 
     <!-- Add/Edit User Modal -->
-    <div class="modal fade" id="userModal" tabindex="-1" aria-labelledby="userModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="userModalLabel">Tambah User</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                </div>
-                <div class="modal-body">
-                    <form id="user-form">
-                        <input type="hidden" id="user-id">
-                        <div class="mb-3">
-                            <label for="user-username" class="form-label">Username</label>
-                            <input type="text" class="form-control" id="user-username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label for="user-password" class="form-label">Password</label>
-                            <input type="password" class="form-control" id="user-password">
-                        </div>
-                        <div class="mb-3">
-                            <label for="user-role" class="form-label">Role</label>
-                            <select class="form-select" id="user-role" required>
-                                <option value="admin">Admin</option>
-                                <option value="kerani">Kerani</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="user-region" class="form-label">Region</label>
-                            <select class="form-select" id="user-region">
-                                <option value="">Semua Region</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="user-unit" class="form-label">Unit</label>
-                            <select class="form-select" id="user-unit">
-                                <option value="">Semua Unit</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label for="user-status" class="form-label">Status</label>
-                            <select class="form-select" id="user-status" required>
-                                <option value="active">Active</option>
-                                <option value="inactive">Inactive</option>
-                            </select>
-                        </div>
-                    </form>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Batal</button>
-                    <button type="button" class="btn btn-primary" id="save-user">Simpan</button>
-                </div>
-            </div>
+    <div
+      class="modal fade"
+      id="userModal"
+      tabindex="-1"
+      aria-labelledby="userModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="userModalLabel">Tambah User</h5>
+            <button
+              type="button"
+              class="btn-close"
+              data-bs-dismiss="modal"
+              aria-label="Close"
+            ></button>
+          </div>
+          <div class="modal-body">
+            <form id="user-form">
+              <input type="hidden" id="user-id" />
+              <div class="mb-3">
+                <label for="user-username" class="form-label">Username</label>
+                <input
+                  type="text"
+                  class="form-control"
+                  id="user-username"
+                  required
+                />
+              </div>
+              <div class="mb-3">
+                <label for="user-password" class="form-label">Password</label>
+                <input
+                  type="password"
+                  class="form-control"
+                  id="user-password"
+                />
+              </div>
+              <div class="mb-3">
+                <label for="user-role" class="form-label">Role</label>
+                <select class="form-select" id="user-role" required>
+                  <option value="admin">Admin</option>
+                  <option value="kerani">Kerani</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="user-region" class="form-label">Region</label>
+                <select class="form-select" id="user-region">
+                  <option value="">Semua Region</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="user-unit" class="form-label">Unit</label>
+                <select class="form-select" id="user-unit">
+                  <option value="">Semua Unit</option>
+                </select>
+              </div>
+              <div class="mb-3">
+                <label for="user-status" class="form-label">Status</label>
+                <select class="form-select" id="user-status" required>
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                </select>
+              </div>
+            </form>
+          </div>
+          <div class="modal-footer">
+            <button
+              type="button"
+              class="btn btn-secondary"
+              data-bs-dismiss="modal"
+            >
+              Batal
+            </button>
+            <button type="button" class="btn btn-primary" id="save-user">
+              Simpan
+            </button>
+          </div>
         </div>
+      </div>
     </div>
 
     <!-- Progress Modal -->
-    <div class="modal fade" id="progressModal" data-bs-backdrop="static" data-bs-keyboard="false" tabindex="-1" aria-labelledby="progressModalLabel" aria-hidden="true">
-        <div class="modal-dialog">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="progressModalLabel">Memproses Data</h5>
-                </div>
-                <div class="modal-body">
-                    <p id="progress-message">Sedang memproses data, harap tunggu...</p>
-                    <div class="progress">
-                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
-                    </div>
-                </div>
+    <div
+      class="modal fade"
+      id="progressModal"
+      data-bs-backdrop="static"
+      data-bs-keyboard="false"
+      tabindex="-1"
+      aria-labelledby="progressModalLabel"
+      aria-hidden="true"
+    >
+      <div class="modal-dialog">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="progressModalLabel">Memproses Data</h5>
+          </div>
+          <div class="modal-body">
+            <p id="progress-message">Sedang memproses data, harap tunggu...</p>
+            <div class="progress">
+              <div
+                class="progress-bar progress-bar-striped progress-bar-animated"
+                role="progressbar"
+                style="width: 0%"
+              ></div>
             </div>
+          </div>
         </div>
+      </div>
     </div>
 
     <!-- Spinner Overlay -->
     <div class="spinner-overlay d-none" id="spinner-overlay">
-        <div class="spinner-border text-primary" role="status">
-            <span class="visually-hidden">Loading...</span>
-        </div>
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
     <script src="app.js"></script>
-</body>
+  </body>
 </html>
