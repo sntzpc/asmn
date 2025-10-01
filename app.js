@@ -509,23 +509,23 @@ async function handleInputFormSubmit(e) {
   document.getElementById("input-form").reset();
   document.getElementById("input-total-nilai").value = "";
 
-hideSpinner();
+  hideSpinner();
 
-await Swal.fire({
-  icon: "success",
-  title: "Data Tersimpan",
-  text: "Data nilai berhasil disimpan!",
-});
+  await Swal.fire({
+    icon: "success",
+    title: "Data Tersimpan",
+    text: "Data nilai berhasil disimpan!",
+    // opsional: auto close agar cepat kembali input
+    // timer: 1400,
+    // showConfirmButton: false,
+    didClose: () => {
+      // Pindahkan fokus saat modal benar-benar sudah tertutup
+      focusNipField();
+    }
+  });
 
-// beri sedikit jeda agar backdrop benar2 hilang
-setTimeout(() => {
-  const nipInput = document.getElementById("input-nip");
-  if (nipInput) {
-    nipInput.focus();
-    // nipInput.select(); // opsional: pilih semua teks di desktop
-    // nipInput.scrollIntoView({ block: "center", behavior: "smooth" }); // opsional
-  }
-}, 50);
+  // Fallback tambahan kalau user menutup via tombol & event timing berbeda
+  focusNipField();
 
   // Refresh dashboard/report
   renderReportTable();
@@ -1889,6 +1889,26 @@ function updateCharts(data) {
   });
 }
 
+function focusNipField() {
+  const nip = document.getElementById('input-nip');
+  if (!nip) return;
+
+  // Bersihkan dulu agar mobile keyboard mau muncul lagi
+  nip.blur();
+
+  // Coba fokus segera, lalu ulang via rAF bila belum aktif
+  const tryFocus = () => {
+    nip.focus({ preventScroll: false });
+    if (document.activeElement !== nip) {
+      requestAnimationFrame(() => {
+        nip.focus({ preventScroll: false });
+      });
+    }
+  };
+
+  // Sedikit jeda supaya layout settle
+  setTimeout(tryFocus, 0);
+}
 
 // Show spinner
 function showSpinner() {
