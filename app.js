@@ -2170,70 +2170,142 @@ function updateTopScoresTable(data, count) {
 }
 
 // Update charts
-function updateCharts(data) {
-  // Ambil Top 10 berdasarkan totalNilai
-  const top10 = [...data]
-    .sort((a, b) => b.totalNilai - a.totalNilai)
-    .slice(0, 10);
+// === Helper: pilih palet warna yang kontras utk Light/Dark ===
+function getChartPalette() {
+  const dark = document.body.classList.contains('dark');
 
-  // ===== Bar: Top 10 Nilai Tertinggi =====
+  if (dark) {
+    return {
+      // teks & garis
+      text: '#e6e6e6',
+      grid: 'rgba(255,255,255,.16)',
+      // tooltip
+      ttBg: '#0f1a12',
+      ttText: '#e6e6e6',
+      ttBorder: '#1f3a26',
+      // bar
+      barFill: '#6dd58c',
+      barBorder: '#3aa85d',
+      // doughnut (6 bucket)
+      donut: ['#5cc0ff','#8bc34a','#ffd54f','#ff8a80','#b39ddb','#80cbc4'],
+      donutBorder: '#0f1a12'
+    };
+  }
+
+  // LIGHT
+  return {
+    text: '#212529',                     // bootstrap body text
+    grid: 'rgba(0,0,0,.12)',
+    ttBg: '#ffffff',
+    ttText: '#212529',
+    ttBorder: '#dee2e6',                 // bootstrap border
+    barFill: '#2e7d32',                  // primary brand
+    barBorder: '#1b5e20',
+    donut: ['#1976d2','#43a047','#ffb300','#e53935','#7e57c2','#0097a7'],
+    donutBorder: '#ffffff'
+  };
+}
+
+// === DROP-IN REPLACEMENT ===
+function updateCharts(data) {
+  const P = getChartPalette();
+
+  // Set default warna global agar label lain juga kontras
+  Chart.defaults.color = P.text;
+  Chart.defaults.borderColor = P.grid;
+
+  // Ambil Top 10
+  const top10 = [...data].sort((a, b) => b.totalNilai - a.totalNilai).slice(0, 10);
   const topLabels = top10.map((x) => `${x.nama} (${x.nip})`);
   const topValues = top10.map((x) => x.totalNilai);
 
+  // ===== Bar: Top 10 Nilai Tertinggi =====
   const ctxTop = document.getElementById("topScoreCanvas").getContext("2d");
   destroyChartIfAny(_chartTop10);
   _chartTop10 = new Chart(ctxTop, {
     type: "bar",
     data: {
       labels: topLabels,
-      datasets: [{ label: "Total Nilai", data: topValues }],
+      datasets: [{
+        label: "Total Nilai",
+        data: topValues,
+        backgroundColor: P.barFill,
+        borderColor: P.barBorder,
+        borderWidth: 1.5,
+        borderRadius: 6
+      }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { display: false },
-        tooltip: { callbacks: { label: (c) => ` ${c.parsed.y}` } },
+        legend: { display: false, labels: { color: P.text } },
+        tooltip: {
+          backgroundColor: P.ttBg,
+          titleColor: P.ttText,
+          bodyColor: P.ttText,
+          borderColor: P.ttBorder,
+          borderWidth: 1,
+          callbacks: {
+            label: (c) => ` ${c.parsed.y}`
+          }
+        },
       },
       scales: {
-        x: { ticks: { maxRotation: 60, minRotation: 0, autoSkip: false } },
-        y: { beginAtZero: true, suggestedMax: 100 },
-      },
-    },
+        x: {
+          ticks: { color: P.text, maxRotation: 60, minRotation: 0, autoSkip: false },
+          grid: { color: P.grid }
+        },
+        y: {
+          ticks: { color: P.text },
+          grid: { color: P.grid },
+          beginAtZero: true,
+          suggestedMax: 100
+        }
+      }
+    }
   });
 
-  // ===== Pie/Doughnut: Distribusi Nilai (bucket) =====
+  // ===== Doughnut: Distribusi Nilai =====
   const bucketCounts = SCORE_BUCKETS.map(
-    (b) =>
-      data.filter((x) => x.totalNilai >= b.min && x.totalNilai <= b.max).length
+    (b) => data.filter((x) => x.totalNilai >= b.min && x.totalNilai <= b.max).length
   );
 
-  const ctxPie = document
-    .getElementById("scoreDistributionCanvas")
-    .getContext("2d");
+  const ctxPie = document.getElementById("scoreDistributionCanvas").getContext("2d");
   destroyChartIfAny(_chartDistribusi);
   _chartDistribusi = new Chart(ctxPie, {
     type: "doughnut",
     data: {
       labels: SCORE_BUCKETS.map((b) => b.label),
-      datasets: [{ data: bucketCounts }],
+      datasets: [{
+        data: bucketCounts,
+        backgroundColor: P.donut,
+        borderColor: P.donutBorder,
+        borderWidth: 2
+      }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: "bottom" },
+        legend: { position: "bottom", labels: { color: P.text } },
+        tooltip: {
+          backgroundColor: P.ttBg,
+          titleColor: P.ttText,
+          bodyColor: P.ttText,
+          borderColor: P.ttBorder,
+          borderWidth: 1
+        }
       },
       cutout: "55%",
-      // <<<=== Klik segmen -> buka drilldown table distribusi
       onClick: (evt, elements) => {
         if (elements && elements.length) {
           const seg = elements[0];
-          const idx = seg.index; // index bucket
+          const idx = seg.index;
           openDistributionDrill(idx);
         }
-      },
-    },
+      }
+    }
   });
 }
 
@@ -2912,20 +2984,96 @@ function openDistributionDrill(bucketIndex) {
   _drillModal.show();
 }
 
+// ==== THEME core (upgrade ke versi komprehensif) ====
+
+function setChartTheme(isDark) {
+  if (typeof Chart === 'undefined') return;
+
+  // Warna dasar
+  Chart.defaults.color = isDark ? '#e6e6e6' : '#111111';
+  Chart.defaults.borderColor = isDark ? 'rgba(255,255,255,.15)' : 'rgba(0,0,0,.15)';
+
+  // Grid & ticks
+  Chart.defaults.scale = Chart.defaults.scale || {};
+  Chart.defaults.scale.grid = Chart.defaults.scale.grid || {};
+  Chart.defaults.scale.grid.color = isDark ? 'rgba(255,255,255,.08)' : 'rgba(0,0,0,.08)';
+  Chart.defaults.scale.ticks = Chart.defaults.scale.ticks || {};
+  Chart.defaults.scale.ticks.color = isDark ? '#e6e6e6' : '#111111';
+
+  // Legend & tooltip
+  Chart.defaults.plugins = Chart.defaults.plugins || {};
+  Chart.defaults.plugins.legend = Chart.defaults.plugins.legend || {};
+  Chart.defaults.plugins.legend.labels = Chart.defaults.plugins.legend.labels || {};
+  Chart.defaults.plugins.legend.labels.color = isDark ? '#e6e6e6' : '#111111';
+
+  Chart.defaults.plugins.tooltip = Chart.defaults.plugins.tooltip || {};
+  Chart.defaults.plugins.tooltip.backgroundColor = isDark ? '#0f3d18' : '#ffffff';
+  Chart.defaults.plugins.tooltip.titleColor = isDark ? '#e6e6e6' : '#111111';
+  Chart.defaults.plugins.tooltip.bodyColor  = isDark ? '#e6e6e6' : '#111111';
+  Chart.defaults.plugins.tooltip.borderColor = isDark ? 'rgba(255,255,255,.15)' : 'rgba(0,0,0,.15)';
+  Chart.defaults.plugins.tooltip.borderWidth = 1;
+}
+
 function applyTheme(theme) {
   const isDark = theme === 'dark';
+
+  // toggle kelas
   document.documentElement.classList.toggle('dark', isDark);
   document.body.classList.toggle('dark', isDark);
+
+  // simpan preferensi manual & matikan follow-system
   localStorage.setItem('theme', isDark ? 'dark' : 'light');
-  // ganti icon
+  localStorage.setItem('theme-follow-system', '0');
+
+  // ganti icon (tetap pakai gaya kamu)
   const btn = document.getElementById('theme-toggle');
   if (btn) {
     btn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
   }
+
+  // Sinkronkan Chart.js
+  setChartTheme(isDark);
+
+  // Re-render grafik agar teks/tooltip mengikuti tema baru
+  if (typeof updateDashboard === 'function') {
+    updateDashboard();          // ini akan recreate charts dari nol
+  } else {
+    // fallback: update in-place bila tidak ada updateDashboard
+    try {
+      if (window._chartTop10)  window._chartTop10.update();
+      if (window._chartDistribusi) window._chartDistribusi.update();
+    } catch {}
+  }
 }
 
 function initTheme() {
-  const saved = localStorage.getItem('theme');
-  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-  applyTheme(saved || (prefersDark ? 'dark' : 'light'));
+  const saved = localStorage.getItem('theme'); // 'dark' | 'light' | null
+  const prefersDark = window.matchMedia &&
+    window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+  // Jika user belum pernah memilih, ikuti sistem dan tandai follow-system=1
+  const startTheme = saved || (prefersDark ? 'dark' : 'light');
+  localStorage.setItem('theme-follow-system', saved ? '0' : '1');
+
+  applyTheme(startTheme);
+
+  // Dengarkan perubahan tema OS hanya jika follow-system aktif
+  const mm = window.matchMedia ? window.matchMedia('(prefers-color-scheme: dark)') : null;
+  if (mm) {
+    // Chrome modern: addEventListener; Safari lama: addListener
+    const onChange = (e) => {
+      if (localStorage.getItem('theme-follow-system') === '1') {
+        applyTheme(e.matches ? 'dark' : 'light');
+      }
+    };
+    if (typeof mm.addEventListener === 'function') mm.addEventListener('change', onChange);
+    else if (typeof mm.addListener === 'function') mm.addListener(onChange);
+  }
 }
+
+// ==== Opsional: jika tombol tema-mu memanggil applyTheme secara manual,
+// tidak perlu ubah handler. Contoh handler sederhana:
+// document.getElementById('theme-toggle').addEventListener('click', () => {
+//   const current = document.documentElement.classList.contains('dark') ? 'dark' : 'light';
+//   applyTheme(current === 'dark' ? 'light' : 'dark');
+// });

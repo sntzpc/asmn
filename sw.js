@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ukom-mandor-v2';
+const CACHE_NAME = 'ukom-mandor-v3';
 const APP_SHELL = [
   './',
   './index.html',

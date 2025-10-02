@@ -341,3 +341,253 @@ body.dark .dropdown-menu { background:#0d1a11; color:#e6e6e6; border-color:#1f3a
 body.dark .dropdown-item { color:#e6e6e6; }
 body.dark .dropdown-item:hover { background:#16321f; }
 body.dark .btn-outline-light { border-color: rgba(255,255,255,.3); }
+
+/* === Dark tables & data surfaces === */
+body.dark .table {
+  --tbl-bg: #0f1a12;
+  --tbl-bg-alt: rgba(255,255,255,.03);
+  --tbl-text: #e6e6e6;
+  --tbl-border: #1f3a26;
+  background-color: var(--tbl-bg);
+  color: var(--tbl-text);
+}
+body.dark .table > :not(caption) > * > * {
+  background-color: transparent;
+  color: var(--tbl-text);
+  border-color: var(--tbl-border);
+}
+body.dark .table thead {
+  background-color: #0a2b12;
+  color: #e6e6e6;
+}
+body.dark .table-striped tbody tr:nth-of-type(odd) {
+  background-color: var(--tbl-bg-alt);
+}
+body.dark .table-hover tbody tr:hover {
+  background-color: rgba(255,255,255,.06);
+}
+
+/* pagination */
+body.dark .page-link {
+  background: #0d1a11;
+  color: #e6e6e6;
+  border-color: #1f3a26;
+}
+body.dark .page-item.active .page-link {
+  background: #1b5e20;
+  border-color: #1b5e20;
+  color: #fff;
+}
+body.dark .page-link:hover {
+  background: #16321f;
+  color: #fff;
+}
+
+/* form controls & placeholder */
+body.dark .form-control,
+body.dark .form-select {
+  background:#0d1a11;
+  color:#e6e6e6;
+  border-color:#1f3a26;
+}
+body.dark .form-control::placeholder {
+  color: rgba(230,230,230,.6);
+}
+body.dark .form-select option {
+  background:#0d1a11;
+  color:#e6e6e6;
+}
+
+/* modal general (selain login-modal yg sudah diatur) */
+body.dark .modal-content { background:#122016; color:#e6e6e6; }
+body.dark .modal-header { background:#0a2b12; color:#e6e6e6; border-bottom-color:#1f3a26; }
+body.dark .modal-footer { border-top-color:#1f3a26; }
+
+/* dropdown divider & borders */
+body.dark .dropdown-menu { border-color:#1f3a26; }
+body.dark .dropdown-divider { border-top-color:#1f3a26; }
+
+/* tables inside .table-responsive keep scroll bar readable in dark */
+body.dark .table-responsive::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,.2);
+}
+
+/* ===== User Table — Dark mode polishing ===== */
+body.dark #user-table { color:#e6e6e6; }
+
+/* Header */
+body.dark #user-table thead th {
+  background:#0a2b12;           /* selaras dengan card-header dark */
+  color:#e6e6e6;
+  border-color:#1f3a26;
+}
+
+/* Body rows + zebra + hover */
+body.dark #user-table tbody tr { background:#0f1a12; }
+body.dark #user-table tbody tr:nth-of-type(odd) { background:rgba(255,255,255,.03); }
+body.dark #user-table tbody tr:hover {
+  background:#16321f;           /* highlight saat hover */
+  color:#ffffff;
+}
+
+/* Garis tabel */
+body.dark #user-table td,
+body.dark #user-table th { border-color:#1f3a26; }
+
+/* Teks redup & ikon agar tetap terbaca */
+body.dark #user-table .text-muted,
+body.dark #user-table i.text-muted {
+  color:#9db9a5 !important;     /* abu-abu kehijauan -> kontras cukup */
+  opacity:1;
+}
+
+/* Badge warna agar kontras di dark */
+body.dark #user-table .badge.bg-primary { background:#2b6f3a; color:#fff; }
+body.dark #user-table .badge.bg-info    { background:#0ea5b7; color:#001317; }
+body.dark #user-table .badge.bg-success { background:#1e8e42; color:#fff; }
+body.dark #user-table .badge.bg-secondary { background:#3b4a40; color:#e6e6e6; }
+
+/* Tombol aksi: edit & delete agar “pop” di dark */
+body.dark #user-table .btn-warning {
+  background:#f4c041; border-color:#f4c041; color:#212529;
+}
+body.dark #user-table .btn-danger  {
+  background:#e35d6a; border-color:#e35d6a; color:#fff;
+}
+body.dark #user-table .btn-warning:hover { filter:brightness(0.95); }
+body.dark #user-table .btn-danger:hover  { filter:brightness(0.95); }
+
+/* Icon user di kolom Username */
+body.dark #user-table .fa-user-circle { color:#9db9a5; }
+
+/* ==== DRILLDOWN MODAL (Region / Unit) — DARK MODE ==== */
+/* Modal container */
+body.dark #drilldownModal .modal-content{
+  background:#0f1a12;               /* sedikit lebih gelap dari .card umum */
+  color:#e6e6e6;
+  border:1px solid #1f3a26;
+}
+body.dark #drilldownModal .modal-header{
+  background:#0a2b12;
+  color:#e6e6e6;
+  border-bottom-color:#1f3a26;
+}
+
+/* Tombol close (X) biar terlihat) */
+body.dark #drilldownModal .btn-close{
+  filter: invert(1) grayscale(100%);
+  opacity:.85;
+}
+body.dark #drilldownModal .btn-close:hover{ opacity:1; }
+
+/* Tombol kembali di header */
+body.dark #drillback-btn.btn-outline-secondary{
+  color:#e6e6e6;
+  border-color:#2a4a33;
+  background:transparent;
+}
+body.dark #drillback-btn.btn-outline-secondary:hover{
+  background:#16321f;
+  border-color:#2a4a33;
+  color:#fff;
+}
+
+/* Grid kartu region/unit di dalam modal */
+body.dark #drilldownModal .card{
+  background:#122016;               /* panel kartu */
+  color:#e6e6e6;
+  border:1px solid #1f3a26;
+  box-shadow: 0 2px 10px rgba(0,0,0,.35);
+}
+body.dark #drilldownModal .card:hover{
+  background:#142518;               /* sedikit lebih terang saat hover */
+  border-color:#2a4a33;
+  box-shadow: 0 6px 16px rgba(0,0,0,.45);
+}
+
+/* Judul kartu */
+body.dark #drilldownModal .card .card-title{
+  color:#ffffff;
+}
+
+/* Sub-title kecil “Region” / “Unit • x mandor” */
+body.dark #drilldownModal .card .text-muted{
+  color:#9db9a5 !important;
+  opacity:1;
+}
+
+/* Angka besar (jumlah mandor) tetap kontras */
+body.dark #drilldownModal .card .display-6,
+body.dark #drilldownModal .card .fw-bold{
+  color:#ffffff;
+}
+
+/* Chip/badge nama orang (aslinya bg-light text-dark di light mode) */
+body.dark #drilldownModal .badge.bg-light,
+body.dark #drilldownModal .badge.bg-secondary{
+  background: rgba(255,255,255,.14) !important; /* chip translucent */
+  color:#eaf3ec !important;
+  border:1px solid #2a4a33;
+}
+
+/* Badge CTA kecil “Klik untuk detail” yang ada di dalam kartu */
+body.dark #drilldownModal .badge.bg-primary{
+  background:#1b5e20 !important;
+  color:#fff !important;
+}
+
+/* Tombol “Klik untuk tabel/detail” (btn-primary) tetap menonjol */
+body.dark #drilldownModal .btn.btn-primary{
+  background:#1b5e20;
+  border-color:#1b5e20;
+  color:#fff;
+}
+body.dark #drilldownModal .btn.btn-primary:hover{
+  filter: brightness(1.05);
+}
+
+/* Scrollbar halus di body modal */
+body.dark #drilldownModal .modal-body::-webkit-scrollbar-thumb{
+  background: rgba(255,255,255,.22);
+}
+
+/* Pagination & controls (jika muncul di level tabel distribusi) */
+body.dark #drill-controls .form-control,
+body.dark #drill-controls .form-select{
+  background:#0d1a11;
+  color:#e6e6e6;
+  border-color:#1f3a26;
+}
+body.dark #drill-pagination .page-link{
+  background:#0d1a11;
+  color:#e6e6e6;
+  border-color:#1f3a26;
+}
+body.dark #drill-pagination .page-item.active .page-link{
+  background:#1b5e20;
+  border-color:#1b5e20;
+  color:#fff;
+}
+body.dark #drill-pagination .page-link:hover{
+  background:#16321f;
+  color:#fff;
+}
+
+/* ==== Fix text-muted di Dark Mode (Bootstrap 5) ==== */
+/* Jika pakai Bootstrap ≥5.3, cukup override variabelnya */
+body.dark{
+  --bs-secondary-color: #9db9a5;             /* warna utk .text-muted */
+  --bs-secondary-color-rgb: 157,185,165;
+}
+
+/* Fallback bila variabel di atas tidak efektif di sebagian komponen */
+body.dark .text-muted{
+  color:#9db9a5 !important;                  /* abu-abu kehijauan yang kontras */
+  opacity:1 !important;
+}
+
+/* (opsional) lebih spesifik untuk area drilldown */
+body.dark #drilldownModal .text-muted{
+  color:#9db9a5 !important;
+  opacity:1 !important;
+}
