@@ -301,3 +301,9 @@ body {
   }
 }
 
+/* opsional */
+#report-table thead th[data-field] { user-select:none; }
+#report-table thead th[data-field]:hover { text-decoration: underline; }
+
+.card[role="button"] { cursor: pointer; transition: transform .1s ease; }
+.card[role="button"]:hover { transform: translateY(-2px); }

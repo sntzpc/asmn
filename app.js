@@ -6,26 +6,88 @@ let currentUser = null;
 let currentPage = 1;
 let pageSize = 20;
 let filteredNilaiData = [];
+let _editingId = null;
+// ===== Dashboard Drilldown State =====
+let _dashData = [];               // cache data hasil filter Dashboard terakhir
+let _drillLevel = 'region';       // 'region' | 'unit' | 'table'
+let _selectedRegion = null;
+let _selectedUnit = null;
+let _drillCurrentPage = 1;
+let _drillPageSize = 20;
+let _drillSearch = '';
+let _drillModal = null;           // instance Bootstrap Modal
+
 
 // ===== Charts (Chart.js) =====
 let _chartTop10 = null;
 let _chartDistribusi = null;
+
+// ===== Sorting (Report) =====
+let sortField = "timestamp"; // default: urut terbaru → terlama
+let sortDir = "desc"; // 'asc' | 'desc'
+
+// Konfigurasi Google Apps Script
+const GAS_URL =
+  "https://script.google.com/macros/s/AKfycbxCzrwS6Ct4yzIFcBf4yWaR9BHqL0h7FAeLov0ZokJkJF8fqDAsT3sDOzzhwpCwt-Uc/exec";
+
+function compareValues(a, b, field) {
+  // Normalisasi nilai untuk perbandingan
+  const va = a?.[field];
+  const vb = b?.[field];
+
+  // Khusus timestamp → bandingkan epoch
+  if (field === "timestamp") {
+    const ta = va ? new Date(va).getTime() : 0;
+    const tb = vb ? new Date(vb).getTime() : 0;
+    return ta - tb;
+  }
+
+  // Numerik
+  if (["nilaiIsian", "nilaiBKM", "totalNilai"].includes(field)) {
+    const na = Number(va || 0);
+    const nb = Number(vb || 0);
+    return na - nb;
+  }
+
+  // Boolean-ish: synced → true duluan (atau sebaliknya)
+  if (field === "synced") {
+    const sa = !!va ? 1 : 0;
+    const sb = !!vb ? 1 : 0;
+    return sa - sb;
+  }
+
+  // String default
+  const sa = (va ?? "").toString().toLowerCase();
+  const sb = (vb ?? "").toString().toLowerCase();
+  if (sa < sb) return -1;
+  if (sa > sb) return 1;
+  return 0;
+}
+
+function applySorting(arr) {
+  if (!sortField) return arr;
+  const sorted = [...arr].sort((a, b) => {
+    const base = compareValues(a, b, sortField);
+    return sortDir === "asc" ? base : -base;
+  });
+  return sorted;
+}
 
 // ===== Session (3 hari) =====
 const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 function saveSession(user) {
   const payload = { user, expiresAt: Date.now() + SESSION_TTL_MS };
-  localStorage.setItem('sessionUser', JSON.stringify(payload));
+  localStorage.setItem("sessionUser", JSON.stringify(payload));
 }
 
 function loadSession() {
   try {
-    const raw = localStorage.getItem('sessionUser');
+    const raw = localStorage.getItem("sessionUser");
     if (!raw) return null;
     const obj = JSON.parse(raw);
     if (!obj || !obj.expiresAt || obj.expiresAt < Date.now()) {
-      localStorage.removeItem('sessionUser');
+      localStorage.removeItem("sessionUser");
       return null;
     }
     return obj.user;
@@ -35,18 +97,12 @@ function loadSession() {
 }
 
 function clearSession() {
-  localStorage.removeItem('sessionUser');
+  localStorage.removeItem("sessionUser");
 }
-
-
-// Konfigurasi Google Apps Script
-// GANTI URL_INI dengan URL Web App Google Apps Script Anda
-const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbwu5QTgQ_S7g5OjnHpBrdxtICaZ1_ZQ2rV5dOU7iJjn1ENLn1CuPgKFQvwEbb98tbQ6/exec";
 
 // Initialize application
 document.addEventListener("DOMContentLoaded", function () {
-    // Auto-login jika sesi valid
+  // Auto-login jika sesi valid
   const sessionUser = loadSession();
   if (sessionUser) {
     currentUser = sessionUser;
@@ -267,6 +323,33 @@ function setupEventListeners() {
   document
     .getElementById("filter-count")
     .addEventListener("change", updateDashboard);
+
+      // === Drilldown Dashboard ===
+  const cardTotal = document.getElementById('card-total-mandor');
+  if (cardTotal) {
+    cardTotal.style.cursor = 'pointer';
+    cardTotal.addEventListener('click', () => {
+      openDrilldownRoot(); // tampilkan level Region
+    });
+  }
+
+  // Kontrol modal (once)
+  const backBtn = document.getElementById('drillback-btn');
+  backBtn.addEventListener('click', handleDrillBack);
+
+  document.getElementById('drill-search').addEventListener('input', (e) => {
+    _drillSearch = (e.target.value || '').trim().toLowerCase();
+    _drillCurrentPage = 1;
+    renderDrillTable();
+  });
+
+  document.getElementById('drill-pagesize').addEventListener('change', (e) => {
+    _drillPageSize = parseInt(e.target.value, 10) || 20;
+    _drillCurrentPage = 1;
+    renderDrillTable();
+  });
+
+  document.getElementById('drill-export').addEventListener('click', exportDrillExcel);
 }
 
 // Initialize UI
@@ -279,6 +362,7 @@ function initializeUI() {
 
   // Update sync info
   updateSyncInfo();
+  initReportSortingHeaders();
 }
 
 // Fungsi login yang terintegrasi dengan GAS
@@ -310,11 +394,11 @@ async function handleLogin(e) {
       document.getElementById("current-user").textContent =
         currentUser.username;
 
-        const cuMobile = document.getElementById("current-user-mobile");
-        if (cuMobile) cuMobile.textContent = currentUser.username;
+      const cuMobile = document.getElementById("current-user-mobile");
+      if (cuMobile) cuMobile.textContent = currentUser.username;
 
       // simpan sesi 3 hari
-        saveSession(currentUser);
+      saveSession(currentUser);
 
       // Hide login modal
       const loginModal = bootstrap.Modal.getInstance(
@@ -487,7 +571,7 @@ async function handleInputFormSubmit(e) {
   showSpinner();
 
   const newItem = {
-    id: Date.now().toString(),
+    id: _editingId || Date.now().toString(),
     nip: document.getElementById("input-nip").value.trim(),
     nama: document.getElementById("input-nama").value.trim(),
     region: document.getElementById("input-region").value.trim(),
@@ -498,20 +582,34 @@ async function handleInputFormSubmit(e) {
     nilaiIsian: parseInt(document.getElementById("input-nilai-isian").value),
     nilaiBKM: parseInt(document.getElementById("input-nilai-bkm").value),
     totalNilai: parseInt(document.getElementById("input-total-nilai").value),
-    inputBy: currentUser?.username || '',
+    inputBy: currentUser?.username || "",
     timestamp: new Date().toISOString(),
-    synced: false
+    synced: false,
   };
 
   // Validasi dasar
-  if (!newItem.nip || !newItem.nama || isNaN(newItem.nilaiIsian) || isNaN(newItem.nilaiBKM)) {
+  if (
+    !newItem.nip ||
+    !newItem.nama ||
+    isNaN(newItem.nilaiIsian) ||
+    isNaN(newItem.nilaiBKM)
+  ) {
     hideSpinner();
-    await Swal.fire({ icon: "error", title: "Data Tidak Lengkap", text: "Harap isi semua field yang wajib!" });
+    await Swal.fire({
+      icon: "error",
+      title: "Data Tidak Lengkap",
+      text: "Harap isi semua field yang wajib!",
+    });
     return;
   }
 
   // Cek duplikasi by NIP
-  const existIdx = nilaiData.findIndex(x => x.nip === newItem.nip && x.unit === newItem.unit && x.region === newItem.region);
+  const existIdx = nilaiData.findIndex(
+    (x) =>
+      x.nip === newItem.nip &&
+      x.unit === newItem.unit &&
+      x.region === newItem.region
+  );
   if (existIdx >= 0) {
     hideSpinner();
     const exist = nilaiData[existIdx];
@@ -520,30 +618,36 @@ async function handleInputFormSubmit(e) {
       title: "Data sudah ada",
       html: `
         <div class="text-start">
-          <p>Data untuk NIP <b>${exist.nip}</b> (${exist.nama}) sudah pernah diinput.</p>
+          <p>Data untuk NIP <b>${exist.nip}</b> (${
+        exist.nama
+      }) sudah pernah diinput.</p>
           <ul class="small">
-            <li>Total lama: <b>${exist.totalNilai}</b> (${exist.nilaiIsian}+${exist.nilaiBKM})</li>
-            <li>Status sync: <b>${exist.synced ? 'Synced' : 'Belum Sync'}</b></li>
+            <li>Total lama: <b>${exist.totalNilai}</b> (${exist.nilaiIsian}+${
+        exist.nilaiBKM
+      })</li>
+            <li>Status sync: <b>${
+              exist.synced ? "Synced" : "Belum Sync"
+            }</b></li>
           </ul>
           <p>Apakah Anda ingin <b>mengganti/mengedit</b> data tersebut dengan nilai baru?</p>
         </div>
       `,
       showCancelButton: true,
       confirmButtonText: "Ya, ganti",
-      cancelButtonText: "Tidak"
+      cancelButtonText: "Tidak",
     });
     if (!isConfirmed) return;
 
     // Jika ganti: gunakan ID lama agar upsert ke baris yang sama saat sync
     newItem.id = exist.id;
-    newItem.synced = false;         // perubahan lokal → perlu sync ulang
+    newItem.synced = false; // perubahan lokal → perlu sync ulang
     nilaiData[existIdx] = newItem;
-
   } else {
     // Baru
     nilaiData.push(newItem);
   }
 
+  _editingId = null;
   localStorage.setItem("nilaiData", JSON.stringify(nilaiData));
 
   // Reset form
@@ -562,7 +666,7 @@ async function handleInputFormSubmit(e) {
     didClose: () => {
       // Pindahkan fokus saat modal benar-benar sudah tertutup
       focusNipField();
-    }
+    },
   });
 
   // Fallback tambahan kalau user menutup via tombol & event timing berbeda
@@ -572,7 +676,6 @@ async function handleInputFormSubmit(e) {
   renderReportTable();
   updateDashboard();
 }
-
 
 // Calculate total nilai
 function calculateTotalNilai() {
@@ -649,11 +752,10 @@ function handleNipAutocomplete() {
 
 // Helper: aman-destroy chart lama
 function destroyChartIfAny(ref) {
-  if (ref && typeof ref.destroy === 'function') {
+  if (ref && typeof ref.destroy === "function") {
     ref.destroy();
   }
 }
-
 
 // Render report table
 function renderReportTable() {
@@ -675,6 +777,9 @@ function renderReportTable() {
       )
     );
   }
+
+  // >>> TAMBAHAN: apply sorting (default 'timestamp' desc)
+  filteredNilaiData = applySorting(filteredNilaiData);
 
   // Apply pagination
   const startIndex = (currentPage - 1) * pageSize;
@@ -739,6 +844,7 @@ function renderReportTable() {
 
   // Render pagination
   renderPagination();
+  updateSortIndicators();
 }
 
 // Render pagination
@@ -808,6 +914,7 @@ function toggleSelectAll() {
 function editNilaiData(id) {
   const item = nilaiData.find((item) => item.id === id);
   if (!item) return;
+  _editingId = id;
 
   // Populate input form with data
   document.getElementById("input-nip").value = item.nip;
@@ -913,8 +1020,13 @@ async function syncDataToGoogleSheets(dataToSync) {
 
         const result = await response.json();
         if (result.status === "success") {
+          const payload = result.data || {};
+          const usedId = payload._id || item.id; // _id yang dipakai di Sheet (bisa berbeda jika byKey)
           const itemIndex = nilaiData.findIndex((n) => n.id === item.id);
+
           if (itemIndex !== -1) {
+            // Jika _id berubah (misal overwrite byKey), update id lokal supaya next sync byId langsung kena
+            nilaiData[itemIndex].id = usedId;
             nilaiData[itemIndex].synced = true;
             nilaiData[itemIndex].syncedAt = new Date().toISOString();
             successCount++;
@@ -1017,7 +1129,7 @@ async function pullMasterDataFromGoogleSheets() {
     // ===== 1) MASTER
     const qsMaster = new URLSearchParams({ action: "getMasterData" });
     if (currentUser?.region) qsMaster.set("region", currentUser.region);
-    if (currentUser?.unit)   qsMaster.set("unit",   currentUser.unit);
+    if (currentUser?.unit) qsMaster.set("unit", currentUser.unit);
 
     const respMaster = await fetch(`${GAS_URL}?${qsMaster.toString()}`);
     if (!respMaster.ok) throw new Error(`HTTP Master ${respMaster.status}`);
@@ -1033,7 +1145,7 @@ async function pullMasterDataFromGoogleSheets() {
     updateProgress(35);
     const qsScores = new URLSearchParams({ action: "getScores" });
     if (currentUser?.region) qsScores.set("region", currentUser.region);
-    if (currentUser?.unit)   qsScores.set("unit",   currentUser.unit);
+    if (currentUser?.unit) qsScores.set("unit", currentUser.unit);
 
     const respScores = await fetch(`${GAS_URL}?${qsScores.toString()}`);
     if (!respScores.ok) throw new Error(`HTTP Scores ${respScores.status}`);
@@ -1043,31 +1155,31 @@ async function pullMasterDataFromGoogleSheets() {
     }
 
     // Map data Scores dari server → format nilaiData frontend
-    const serverItems = resScores.data.map(r => ({
-      id:        String(r._id || r.id),
-      nip:       String(r.NIP || ''),
-      nama:      String(r.Nama || ''),
-      region:    String(r.Region || ''),
-      unit:      String(r.Unit || ''),
-      divisi:    String(r.Divisi || ''),
-      jabatan:   String(r.KodeJabatan || ''),
-      grade:     String(r.Grade || ''),
+    const serverItems = resScores.data.map((r) => ({
+      id: String(r._id || r.id),
+      nip: String(r.NIP || ""),
+      nama: String(r.Nama || ""),
+      region: String(r.Region || ""),
+      unit: String(r.Unit || ""),
+      divisi: String(r.Divisi || ""),
+      jabatan: String(r.KodeJabatan || ""),
+      grade: String(r.Grade || ""),
       nilaiIsian: Number(r.NilaiIsian || 0),
-      nilaiBKM:   Number(r.NilaiBKM   || 0),
-      totalNilai: Number(r.Total      || 0),
-      inputBy:    String(r.createdBy  || ''),
-      timestamp:  String(r.createdAt  || new Date().toISOString()),
-      synced:     true,                         // penting: tandai sebagai sudah sinkron
-      syncedAt:   r.syncAt ? String(r.syncAt) : new Date().toISOString()
+      nilaiBKM: Number(r.NilaiBKM || 0),
+      totalNilai: Number(r.Total || 0),
+      inputBy: String(r.createdBy || ""),
+      timestamp: String(r.createdAt || new Date().toISOString()),
+      synced: true, // penting: tandai sebagai sudah sinkron
+      syncedAt: r.syncAt ? String(r.syncAt) : new Date().toISOString(),
     }));
 
     updateProgress(65);
 
     // Merge: pertahankan item lokal yang belum synced, hindari duplikat id
-    const localUnsynced = (nilaiData || []).filter(x => !x.synced);
+    const localUnsynced = (nilaiData || []).filter((x) => !x.synced);
     const byId = new Map();
-    serverItems.forEach(it => byId.set(it.id, it));
-    localUnsynced.forEach(it => {
+    serverItems.forEach((it) => byId.set(it.id, it));
+    localUnsynced.forEach((it) => {
       if (!byId.has(it.id)) byId.set(it.id, it);
     });
 
@@ -1079,12 +1191,18 @@ async function pullMasterDataFromGoogleSheets() {
     Swal.fire({
       icon: "success",
       title: "Data Terunduh",
-      text: `Master: ${masterData.length} baris, Scores: ${serverItems.length} baris (sinkron).`
+      text: `Master: ${masterData.length} baris, Scores: ${serverItems.length} baris (sinkron).`,
     });
 
     updateSyncInfo();
     // Bersihkan & isi ulang dropdown filter
-    ["filter-region","filter-unit","filter-jabatan","user-region","user-unit"].forEach(id => {
+    [
+      "filter-region",
+      "filter-unit",
+      "filter-jabatan",
+      "user-region",
+      "user-unit",
+    ].forEach((id) => {
       const el = document.getElementById(id);
       if (el) for (let i = el.options.length - 1; i >= 1; i--) el.remove(i);
     });
@@ -1096,10 +1214,13 @@ async function pullMasterDataFromGoogleSheets() {
   } catch (error) {
     hideProgressModal();
     console.error("Error pulling data:", error);
-    Swal.fire({ icon: "error", title: "Gagal Tarik Data", text: String(error.message) });
+    Swal.fire({
+      icon: "error",
+      title: "Gagal Tarik Data",
+      text: String(error.message),
+    });
   }
 }
-
 
 // Update fungsi pullMasterData
 function pullMasterData() {
@@ -1241,7 +1362,7 @@ async function syncUsersToGoogleSheets(patch) {
     const response = await fetch(GAS_URL, {
       method: "POST",
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "syncUsers", users: toSend })
+      body: JSON.stringify({ action: "syncUsers", users: toSend }),
     });
 
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
@@ -1253,7 +1374,11 @@ async function syncUsersToGoogleSheets(patch) {
   } catch (error) {
     hideProgressModal();
     console.error("Error syncing users:", error);
-    Swal.fire({ icon: "error", title: "Sync User Gagal", text: "Terjadi kesalahan: " + error.message });
+    Swal.fire({
+      icon: "error",
+      title: "Sync User Gagal",
+      text: "Terjadi kesalahan: " + error.message,
+    });
     return false;
   }
 }
@@ -1261,13 +1386,17 @@ async function syncUsersToGoogleSheets(patch) {
 // =====  clearLocalDataWithPassword =====
 async function clearLocalDataWithPassword() {
   if (!currentUser || !currentUser.username) {
-    await Swal.fire({ icon: 'error', title: 'Tidak Bisa', text: 'Silakan login dahulu.' });
+    await Swal.fire({
+      icon: "error",
+      title: "Tidak Bisa",
+      text: "Silakan login dahulu.",
+    });
     return;
   }
 
   // 1) Verifikasi password via GAS
   const { value: verifiedPwd } = await Swal.fire({
-    title: 'Verifikasi Password',
+    title: "Verifikasi Password",
     html: `
       <p class="mb-1">Masukkan password untuk menghapus data lokal:</p>
       <p class="small text-muted mb-2">
@@ -1275,37 +1404,42 @@ async function clearLocalDataWithPassword() {
         <strong>Master Last Update</strong>.
       </p>
     `,
-    input: 'password',
-    inputPlaceholder: 'Password',
-    inputAttributes: { autocapitalize: 'off', autocorrect: 'off' },
+    input: "password",
+    inputPlaceholder: "Password",
+    inputAttributes: { autocapitalize: "off", autocorrect: "off" },
     showCancelButton: true,
-    confirmButtonText: 'Verifikasi',
-    cancelButtonText: 'Batal',
+    confirmButtonText: "Verifikasi",
+    cancelButtonText: "Batal",
     showLoaderOnConfirm: true,
     allowOutsideClick: () => !Swal.isLoading(),
     preConfirm: async (pwd) => {
       try {
-        if (!pwd) throw new Error('Password wajib diisi');
+        if (!pwd) throw new Error("Password wajib diisi");
         const resp = await fetch(GAS_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ action: 'login', username: currentUser.username, password: pwd })
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "login",
+            username: currentUser.username,
+            password: pwd,
+          }),
         });
         const res = await resp.json();
-        if (res.status !== 'success') throw new Error(res.message || 'Password salah');
+        if (res.status !== "success")
+          throw new Error(res.message || "Password salah");
         return pwd;
       } catch (err) {
-        Swal.showValidationMessage(err.message || 'Verifikasi gagal');
+        Swal.showValidationMessage(err.message || "Verifikasi gagal");
         return false;
       }
-    }
+    },
   });
   if (!verifiedPwd) return;
 
   // 2) Pilihan mode hapus
   const mode = await Swal.fire({
-    icon: 'warning',
-    title: 'Hapus Data Lokal?',
+    icon: "warning",
+    title: "Hapus Data Lokal?",
     html: `
       <div class="text-start">
         <p>Anda dapat memilih:</p>
@@ -1317,9 +1451,9 @@ async function clearLocalDataWithPassword() {
     `,
     showCancelButton: true,
     showDenyButton: true,
-    confirmButtonText: 'Hapus & Tarik Ulang',
-    denyButtonText: 'Hapus Saja',
-    cancelButtonText: 'Batal'
+    confirmButtonText: "Hapus & Tarik Ulang",
+    denyButtonText: "Hapus Saja",
+    cancelButtonText: "Batal",
   });
   if (mode.isDismissed) return;
 
@@ -1328,13 +1462,13 @@ async function clearLocalDataWithPassword() {
   // 3) Eksekusi hapus + progress modal
   try {
     // Hapus storage
-    localStorage.removeItem('masterData');
-    localStorage.removeItem('masterDataLastUpdate');
-    localStorage.removeItem('nilaiData');
+    localStorage.removeItem("masterData");
+    localStorage.removeItem("masterDataLastUpdate");
+    localStorage.removeItem("nilaiData");
 
     // Reset variabel runtime
     masterData = [];
-    nilaiData  = [];
+    nilaiData = [];
 
     // Reset halaman & refresh UI kosong
     currentPage = 1;
@@ -1343,11 +1477,18 @@ async function clearLocalDataWithPassword() {
     updateDashboard();
 
     if (!rePull) {
-      await Swal.fire({ icon: 'success', title: 'Berhasil', text: 'Data lokal telah dihapus.' });
+      await Swal.fire({
+        icon: "success",
+        title: "Berhasil",
+        text: "Data lokal telah dihapus.",
+      });
     }
-
   } catch (err) {
-    await Swal.fire({ icon: 'error', title: 'Gagal', text: 'Terjadi kesalahan saat menghapus data lokal.' });
+    await Swal.fire({
+      icon: "error",
+      title: "Gagal",
+      text: "Terjadi kesalahan saat menghapus data lokal.",
+    });
     return;
   }
 
@@ -1357,7 +1498,6 @@ async function clearLocalDataWithPassword() {
     await pullMasterDataFromGoogleSheets();
   }
 }
-
 
 // Fungsi untuk load users dari Google Sheet
 async function loadUsersFromGoogleSheets() {
@@ -1540,13 +1680,21 @@ async function deleteUser(username) {
   if (!username) return;
 
   if (username === "admin") {
-    Swal.fire({ icon: "error", title: "Tidak Dapat Menghapus", text: "User admin tidak dapat dihapus!" });
+    Swal.fire({
+      icon: "error",
+      title: "Tidak Dapat Menghapus",
+      text: "User admin tidak dapat dihapus!",
+    });
     return;
   }
 
   const userToDelete = users.find((u) => u.username === username);
   if (!userToDelete) {
-    Swal.fire({ icon: "error", title: "Tidak Ditemukan", text: "User tidak ditemukan di daftar." });
+    Swal.fire({
+      icon: "error",
+      title: "Tidak Ditemukan",
+      text: "User tidak ditemukan di daftar.",
+    });
     return;
   }
 
@@ -1569,7 +1717,7 @@ async function deleteUser(username) {
     confirmButtonColor: "#d33",
     cancelButtonColor: "#3085d6",
     confirmButtonText: "Ya, Hapus!",
-    cancelButtonText: "Batal"
+    cancelButtonText: "Batal",
   });
 
   if (!confirm.isConfirmed) return;
@@ -1581,8 +1729,8 @@ async function deleteUser(username) {
       headers: { "Content-Type": "text/plain;charset=utf-8" },
       body: JSON.stringify({
         action: "deleteUsers",
-        usernames: [username]
-      })
+        usernames: [username],
+      }),
     });
     const json = await resp.json();
     hideProgressModal();
@@ -1596,10 +1744,14 @@ async function deleteUser(username) {
 
     if (deleted >= 1 && info?.ok) {
       // Hapus dari cache lokal
-      users = users.filter(u => u.username !== username);
+      users = users.filter((u) => u.username !== username);
       localStorage.setItem("users", JSON.stringify(users));
 
-      await Swal.fire({ icon: "success", title: "Terhapus!", text: `User ${username} telah dihapus.` });
+      await Swal.fire({
+        icon: "success",
+        title: "Terhapus!",
+        text: `User ${username} telah dihapus.`,
+      });
 
       // Refresh tampilan dari server agar konsisten
       await renderUserTable();
@@ -1607,13 +1759,19 @@ async function deleteUser(username) {
       await Swal.fire({
         icon: "error",
         title: "Gagal Menghapus",
-        text: info?.reason ? `Alasan: ${info.reason}` : "Tidak ada baris yang terhapus."
+        text: info?.reason
+          ? `Alasan: ${info.reason}`
+          : "Tidak ada baris yang terhapus.",
       });
     }
   } catch (err) {
     hideProgressModal();
     console.error(err);
-    Swal.fire({ icon: "error", title: "Gagal", text: String(err.message || err) });
+    Swal.fire({
+      icon: "error",
+      title: "Gagal",
+      text: String(err.message || err),
+    });
   }
 }
 
@@ -1702,12 +1860,12 @@ async function saveUser() {
       // Simpan ke localStorage
       localStorage.setItem("users", JSON.stringify(users));
 
-        // Tentukan patch user yang dikirim
-        const patchUser = id
-    ? users.find(u => u.username === id)              // edit
-    : { username, password, role, region, unit, status }; // user baru
+      // Tentukan patch user yang dikirim
+      const patchUser = id
+        ? users.find((u) => u.username === id) // edit
+        : { username, password, role, region, unit, status }; // user baru
 
-        // Sync ke Google Sheet
+      // Sync ke Google Sheet
       const syncSuccess = await syncUsersToGoogleSheets([patchUser]);
 
       if (syncSuccess) {
@@ -1779,6 +1937,7 @@ function updateDashboard() {
 
   // Filter nilai data
   let filteredData = [...nilaiData];
+    _dashData = filteredData;
 
   if (regionFilter) {
     filteredData = filteredData.filter((item) => item.region === regionFilter);
@@ -1855,70 +2014,424 @@ function updateTopScoresTable(data, count) {
 function updateCharts(data) {
   // Ambil Top 10 berdasarkan totalNilai
   const top10 = [...data]
-    .sort((a,b) => b.totalNilai - a.totalNilai)
+    .sort((a, b) => b.totalNilai - a.totalNilai)
     .slice(0, 10);
 
   // ===== Bar: Top 10 Nilai Tertinggi =====
-  const topLabels = top10.map(x => `${x.nama} (${x.nip})`);
-  const topValues = top10.map(x => x.totalNilai);
+  const topLabels = top10.map((x) => `${x.nama} (${x.nip})`);
+  const topValues = top10.map((x) => x.totalNilai);
 
-  const ctxTop = document.getElementById('topScoreCanvas').getContext('2d');
+  const ctxTop = document.getElementById("topScoreCanvas").getContext("2d");
   destroyChartIfAny(_chartTop10);
   _chartTop10 = new Chart(ctxTop, {
-    type: 'bar',
+    type: "bar",
     data: {
       labels: topLabels,
-      datasets: [{ label: 'Total Nilai', data: topValues }]
+      datasets: [{ label: "Total Nilai", data: topValues }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: { display: false },
-        tooltip: { callbacks: { label: c => ` ${c.parsed.y}` } }
+        tooltip: { callbacks: { label: (c) => ` ${c.parsed.y}` } },
       },
       scales: {
         x: { ticks: { maxRotation: 60, minRotation: 0, autoSkip: false } },
-        y: { beginAtZero: true, suggestedMax: 100 }
-      }
-    }
+        y: { beginAtZero: true, suggestedMax: 100 },
+      },
+    },
   });
 
   // ===== Pie/Doughnut: Distribusi Nilai (bucket) =====
   // Kelompokkan Total Nilai ke bucket: <50, 50-59, 60-69, 70-79, 80-89, >=90
   const buckets = [
-    { label: '< 50',    min: -Infinity, max: 49 },
-    { label: '50–59',   min: 50, max: 59 },
-    { label: '60–69',   min: 60, max: 69 },
-    { label: '70–79',   min: 70, max: 79 },
-    { label: '80–89',   min: 80, max: 89 },
-    { label: '≥ 90',    min: 90, max: Infinity },
+    { label: "< 50", min: -Infinity, max: 49 },
+    { label: "50–59", min: 50, max: 59 },
+    { label: "60–69", min: 60, max: 69 },
+    { label: "70–79", min: 70, max: 79 },
+    { label: "80–89", min: 80, max: 89 },
+    { label: "≥ 90", min: 90, max: Infinity },
   ];
-  const bucketCounts = buckets.map(b =>
-    data.filter(x => x.totalNilai >= b.min && x.totalNilai <= b.max).length
+  const bucketCounts = buckets.map(
+    (b) =>
+      data.filter((x) => x.totalNilai >= b.min && x.totalNilai <= b.max).length
   );
 
-  const ctxPie = document.getElementById('scoreDistributionCanvas').getContext('2d');
+  const ctxPie = document
+    .getElementById("scoreDistributionCanvas")
+    .getContext("2d");
   destroyChartIfAny(_chartDistribusi);
   _chartDistribusi = new Chart(ctxPie, {
-    type: 'doughnut',
+    type: "doughnut",
     data: {
-      labels: buckets.map(b => b.label),
-      datasets: [{ data: bucketCounts }]
+      labels: buckets.map((b) => b.label),
+      datasets: [{ data: bucketCounts }],
     },
     options: {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: { position: 'bottom' }
+        legend: { position: "bottom" },
       },
-      cutout: '55%'
-    }
+      cutout: "55%",
+    },
   });
 }
 
+/* ===========================
+   Drilldown Dashboard
+   =========================== */
+
+function openDrilldownRoot() {
+  _drillLevel = 'region';
+  _selectedRegion = null;
+  _selectedUnit = null;
+  _drillCurrentPage = 1;
+  _drillPageSize = 20;
+  _drillSearch = '';
+
+  // Modal instance
+  if (!_drillModal) {
+    _drillModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
+  }
+  document.getElementById('drilldownModalLabel').textContent = 'Rincian per Region';
+  document.getElementById('drill-controls').classList.add('d-none');
+  document.getElementById('drill-pagination-wrap').classList.add('d-none');
+
+  renderRegionCards();
+  _drillModal.show();
+}
+
+function handleDrillBack() {
+  if (_drillLevel === 'table') {
+    // kembali ke unit list
+    _drillLevel = 'unit';
+    document.getElementById('drilldownModalLabel').textContent = `Region: ${_selectedRegion} • Pilih Unit`;
+    document.getElementById('drill-controls').classList.add('d-none');
+    document.getElementById('drill-pagination-wrap').classList.add('d-none');
+    renderUnitCards(_selectedRegion);
+  } else if (_drillLevel === 'unit') {
+    // kembali ke region list
+    _drillLevel = 'region';
+    _selectedRegion = null;
+    document.getElementById('drilldownModalLabel').textContent = 'Rincian per Region';
+    document.getElementById('drill-controls').classList.add('d-none');
+    document.getElementById('drill-pagination-wrap').classList.add('d-none');
+    renderRegionCards();
+  } else {
+    // level region -> close
+    const modalEl = document.getElementById('drilldownModal');
+    const inst = bootstrap.Modal.getInstance(modalEl);
+    if (inst) inst.hide();
+  }
+}
+
+/* ---- RENDER REGION KARTU ---- */
+function renderRegionCards() {
+  const body = document.getElementById('drill-body');
+  body.innerHTML = '';
+
+  // Hitung jumlah per Region
+  const map = new Map();
+  _dashData.forEach(it => {
+    const r = (it.region || '').trim();
+    if (!r) return;
+    if (!map.has(r)) map.set(r, []);
+    map.get(r).push(it);
+  });
+
+  if (map.size === 0) {
+    body.innerHTML = `<div class="text-center text-muted py-4">Tidak ada data untuk ditampilkan.</div>`;
+    return;
+  }
+
+  // Grid kartu region
+  const row = document.createElement('div');
+  row.className = 'row g-3';
+  Array.from(map.keys()).sort().forEach(region => {
+    const arr = map.get(region) || [];
+    const col = document.createElement('div');
+    col.className = 'col-sm-6 col-md-4 col-lg-3';
+    col.innerHTML = `
+      <div class="card h-100 shadow-sm border-0" role="button" title="Lihat unit di ${region}">
+        <div class="card-body d-flex flex-column">
+          <h5 class="card-title mb-1">${region}</h5>
+          <div class="text-muted small mb-2">Region</div>
+          <div class="display-6 fw-bold">${arr.length}</div>
+          <div class="mt-auto">
+            <span class="badge bg-primary">Klik untuk detail</span>
+          </div>
+        </div>
+      </div>
+    `;
+    col.querySelector('.card').addEventListener('click', () => {
+      _selectedRegion = region;
+      _drillLevel = 'unit';
+      document.getElementById('drilldownModalLabel').textContent = `Region: ${region} • Pilih Unit`;
+      renderUnitCards(region);
+    });
+    row.appendChild(col);
+  });
+  body.appendChild(row);
+}
+
+/* ---- RENDER UNIT KARTU ---- */
+function renderUnitCards(region) {
+  const body = document.getElementById('drill-body');
+  body.innerHTML = '';
+
+  // Group per Unit di region terpilih
+  const dataR = _dashData.filter(x => x.region === region);
+  const map = new Map();
+  dataR.forEach(it => {
+    const u = (it.unit || '').trim();
+    if (!u) return;
+    if (!map.has(u)) map.set(u, []);
+    map.get(u).push(it);
+  });
+
+  if (map.size === 0) {
+    body.innerHTML = `<div class="text-center text-muted py-4">Tidak ada unit pada region ini.</div>`;
+    return;
+  }
+
+  const row = document.createElement('div');
+  row.className = 'row g-3';
+  Array.from(map.keys()).sort().forEach(unit => {
+    const arr = map.get(unit) || [];
+    const contohNama = arr.slice(0, 3).map(a => a.nama).filter(Boolean);
+    const sisa = Math.max(arr.length - contohNama.length, 0);
+
+    const col = document.createElement('div');
+    col.className = 'col-sm-6 col-md-4 col-lg-3';
+    col.innerHTML = `
+      <div class="card h-100 shadow-sm border-0" role="button" title="Lihat tabel di unit ${unit}">
+        <div class="card-body d-flex flex-column">
+          <h5 class="card-title mb-1">${unit}</h5>
+          <div class="text-muted small mb-2">Unit • ${arr.length} mandor</div>
+          <div class="small flex-grow-0">
+            ${contohNama.map(n => `<span class="badge bg-light text-dark me-1 mb-1">${n}</span>`).join('')}
+            ${sisa > 0 ? `<span class="badge bg-secondary">+${sisa} lagi</span>` : ''}
+          </div>
+          <div class="mt-auto pt-2">
+            <span class="badge bg-primary">Klik untuk tabel</span>
+          </div>
+        </div>
+      </div>
+    `;
+    col.querySelector('.card').addEventListener('click', () => {
+      _selectedUnit = unit;
+      _drillLevel = 'table';
+      _drillCurrentPage = 1;
+      _drillPageSize = 20;
+      _drillSearch = '';
+      document.getElementById('drilldownModalLabel').textContent = `Region: ${region} • Unit: ${unit} • Tabel Mandor`;
+      document.getElementById('drill-controls').classList.remove('d-none');
+      document.getElementById('drill-pagination-wrap').classList.remove('d-none');
+      // reset control values
+      document.getElementById('drill-search').value = '';
+      document.getElementById('drill-pagesize').value = '20';
+      renderDrillTable();
+    });
+    row.appendChild(col);
+  });
+  body.appendChild(row);
+
+  // Pastikan controls/pagination hidden saat level unit
+  document.getElementById('drill-controls').classList.add('d-none');
+  document.getElementById('drill-pagination-wrap').classList.add('d-none');
+}
+
+/* ---- TABEL DENGAN PAGING, SEARCH, EXPORT ---- */
+function renderDrillTable() {
+  const body = document.getElementById('drill-body');
+  const region = _selectedRegion;
+  const unit = _selectedUnit;
+
+  // Data sumber
+  let data = _dashData.filter(x => x.region === region && x.unit === unit);
+
+  // Search
+  if (_drillSearch) {
+    const s = _drillSearch;
+    data = data.filter(x =>
+      [
+        x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade
+      ].some(v => (v || '').toString().toLowerCase().includes(s))
+    );
+  }
+
+  // Sort by totalNilai desc
+  data.sort((a, b) => b.totalNilai - a.totalNilai);
+
+  // Paging
+  const total = data.length;
+  const totalPages = Math.max(1, Math.ceil(total / _drillPageSize));
+  if (_drillCurrentPage > totalPages) _drillCurrentPage = totalPages;
+  const start = (_drillCurrentPage - 1) * _drillPageSize;
+  const end = Math.min(start + _drillPageSize, total);
+  const pageData = data.slice(start, end);
+
+  // Render table
+  const tbl = `
+    <div class="table-responsive">
+      <table class="table table-striped table-hover mb-0" id="drill-table">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>NIP</th>
+            <th>Nama</th>
+            <th>Unit</th>
+            <th>Region</th>
+            <th>Divisi</th>
+            <th>Jabatan</th>
+            <th>Nilai Isian</th>
+            <th>Nilai BKM</th>
+            <th>Total Nilai</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${pageData.map((it, i) => `
+            <tr>
+              <td>${start + i + 1}</td>
+              <td>${it.nip}</td>
+              <td>${it.nama}</td>
+              <td>${it.unit}</td>
+              <td>${it.region}</td>
+              <td>${it.divisi}</td>
+              <td>${it.jabatan}</td>
+              <td>${it.nilaiIsian}</td>
+              <td>${it.nilaiBKM}</td>
+              <td><strong>${it.totalNilai}</strong></td>
+            </tr>
+          `).join('')}
+          ${pageData.length === 0 ? `
+            <tr><td colspan="10" class="text-center text-muted py-4">Tidak ada data.</td></tr>
+          ` : ''}
+        </tbody>
+      </table>
+    </div>
+    <div class="mt-2 small text-muted">Menampilkan ${pageData.length} dari ${total} data.</div>
+  `;
+  body.innerHTML = tbl;
+
+  // Render pagination (ellipsis)
+  renderDrillPagination(totalPages);
+}
+
+function renderDrillPagination(totalPages) {
+  const ul = document.getElementById('drill-pagination');
+  ul.innerHTML = '';
+
+  const addItem = (label, page, disabled = false, active = false, isEllipsis = false) => {
+    const li = document.createElement('li');
+    li.className = `page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}`;
+    const a = document.createElement('a');
+    a.className = 'page-link';
+    a.href = '#';
+    a.textContent = label;
+    if (!isEllipsis && !disabled) {
+      a.addEventListener('click', (e) => {
+        e.preventDefault();
+        _drillCurrentPage = page;
+        renderDrillTable();
+      });
+    }
+    if (isEllipsis) li.classList.add('disabled');
+    li.appendChild(a);
+    ul.appendChild(li);
+  };
+
+  const cur = _drillCurrentPage;
+
+  // Prev
+  addItem('Prev', Math.max(1, cur - 1), cur === 1);
+
+  const pages = paginationWindow(cur, totalPages);
+  pages.forEach(p => {
+    if (p === '...') {
+      addItem('...', cur, true, false, true);
+    } else {
+      addItem(String(p), p, false, p === cur);
+    }
+  });
+
+  // Next
+  addItem('Next', Math.min(totalPages, cur + 1), cur === totalPages);
+}
+
+/* window halaman model ellipsis */
+function paginationWindow(current, total) {
+  const delta = 1; // tetangga kiri/kanan
+  const range = [];
+  const rangeWithDots = [];
+  let l;
+
+  // Always show 1 & total; show around current +/- delta; show 2 & total-1 jika perlu
+  for (let i = 1; i <= total; i++) {
+    if (i === 1 || i === total || (i >= current - delta && i <= current + delta) || i === 2 || i === total - 1) {
+      range.push(i);
+    }
+  }
+  for (let i of range) {
+    if (l) {
+      if (i - l === 2) {
+        rangeWithDots.push(l + 1);
+      } else if (i - l !== 1) {
+        rangeWithDots.push('...');
+      }
+    }
+    rangeWithDots.push(i);
+    l = i;
+  }
+  return rangeWithDots;
+}
+
+/* Export Excel untuk level tabel */
+function exportDrillExcel() {
+  if (_drillLevel !== 'table') return;
+  const region = _selectedRegion;
+  const unit = _selectedUnit;
+
+  // Ambil ulang data dengan filter + search (tanpa paging)
+  let data = _dashData.filter(x => x.region === region && x.unit === unit);
+  if (_drillSearch) {
+    const s = _drillSearch;
+    data = data.filter(x =>
+      [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
+        .some(v => (v || '').toString().toLowerCase().includes(s))
+    );
+  }
+  data.sort((a, b) => b.totalNilai - a.totalNilai);
+
+  const ws = XLSX.utils.json_to_sheet(
+    data.map((item, idx) => ({
+      No: idx + 1,
+      NIP: item.nip,
+      Nama: item.nama,
+      Region: item.region,
+      Unit: item.unit,
+      Divisi: item.divisi,
+      'Kode Jabatan': item.jabatan,
+      Grade: item.grade,
+      'Nilai Isian': item.nilaiIsian,
+      'Nilai BKM': item.nilaiBKM,
+      'Total Nilai': item.totalNilai,
+      'Input By': item.inputBy || '',
+      Timestamp: new Date(item.timestamp).toLocaleString('id-ID')
+    }))
+  );
+  const wb = XLSX.utils.book_new();
+  const sheetName = (unit || 'Unit').toString().slice(0, 28) || 'Data';
+  XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  const fname = `Mandor_${region || 'ALL'}_${unit || 'ALL'}.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
+  XLSX.writeFile(wb, fname);
+}
+
+
 function focusNipField() {
-  const nip = document.getElementById('input-nip');
+  const nip = document.getElementById("input-nip");
   if (!nip) return;
 
   // Bersihkan dulu agar mobile keyboard mau muncul lagi
@@ -1957,48 +2470,134 @@ function updateProgress(percent) {
 let _progressModalInstance = null;
 
 function showProgressModal(message) {
-  const el = document.getElementById('progressModal');
-  document.getElementById('progress-message').textContent = message || 'Sedang memproses...';
-  const bar = el.querySelector('.progress-bar');
-  if (bar) bar.style.width = '0%';
+  const el = document.getElementById("progressModal");
+  document.getElementById("progress-message").textContent =
+    message || "Sedang memproses...";
+  const bar = el.querySelector(".progress-bar");
+  if (bar) bar.style.width = "0%";
 
   // Pakai getOrCreateInstance agar selalu ada instance yang valid
   _progressModalInstance = bootstrap.Modal.getOrCreateInstance(el, {
-    backdrop: 'static',
-    keyboard: false
+    backdrop: "static",
+    keyboard: false,
   });
   _progressModalInstance.show();
 }
 
 function hideProgressModal() {
-  const el = document.getElementById('progressModal');
+  const el = document.getElementById("progressModal");
   // Ambil instance yang ada, atau buat kalau hilang (defensif)
-  const instance = _progressModalInstance || bootstrap.Modal.getInstance(el) || bootstrap.Modal.getOrCreateInstance(el);
+  const instance =
+    _progressModalInstance ||
+    bootstrap.Modal.getInstance(el) ||
+    bootstrap.Modal.getOrCreateInstance(el);
   try {
     instance.hide();
-  } catch(e) {
+  } catch (e) {
     // noop
   } finally {
     // Tunggu event hidden agar cleanup backdrop/scroll tepat waktu
     const cleanup = () => {
       setTimeout(() => {
-        document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
-        document.body.classList.remove('modal-open');
-        document.body.style.removeProperty('overflow');
-        document.body.style.removeProperty('padding-right');
+        document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+        document.body.classList.remove("modal-open");
+        document.body.style.removeProperty("overflow");
+        document.body.style.removeProperty("padding-right");
         _progressModalInstance = null;
       }, 50);
-      el.removeEventListener('hidden.bs.modal', cleanup);
+      el.removeEventListener("hidden.bs.modal", cleanup);
     };
-    el.addEventListener('hidden.bs.modal', cleanup);
+    el.addEventListener("hidden.bs.modal", cleanup);
 
     // Fallback kalau event tidak terpanggil (misal kondisi edge)
     setTimeout(() => {
-      document.querySelectorAll('.modal-backdrop').forEach(b => b.remove());
-      document.body.classList.remove('modal-open');
-      document.body.style.removeProperty('overflow');
-      document.body.style.removeProperty('padding-right');
+      document.querySelectorAll(".modal-backdrop").forEach((b) => b.remove());
+      document.body.classList.remove("modal-open");
+      document.body.style.removeProperty("overflow");
+      document.body.style.removeProperty("padding-right");
       _progressModalInstance = null;
     }, 300);
   }
+}
+
+// Pasang handler klik pada header tabel report untuk sorting
+function initReportSortingHeaders() {
+  const thead = document.querySelector("#report-table thead");
+  if (!thead) return;
+
+  // Urutan field mengikuti render row Anda di renderReportTable()
+  // [0]=checkbox, [1]=nip, [2]=nama, [3]=region, [4]=unit, [5]=divisi,
+  // [6]=jabatan, [7]=grade, [8]=nilaiIsian, [9]=nilaiBKM, [10]=totalNilai,
+  // [11]=synced (status teks), [12]=inputBy, [13]=timestamp, [14]=Aksi
+  const fieldsByIndex = [
+    null,
+    "nip",
+    "nama",
+    "region",
+    "unit",
+    "divisi",
+    "jabatan",
+    "grade",
+    "nilaiIsian",
+    "nilaiBKM",
+    "totalNilai",
+    "synced",
+    "inputBy",
+    "timestamp",
+    null,
+  ];
+
+  // Tambah cursor & event click pada th yang sortable
+  thead.querySelectorAll("th").forEach((th, idx) => {
+    const field = fieldsByIndex[idx] || null;
+    if (!field) return; // lewati checkbox & Aksi
+
+    th.style.cursor = "pointer";
+    th.setAttribute("data-field", field);
+
+    th.addEventListener("click", () => {
+      const newField = th.getAttribute("data-field");
+      if (sortField === newField) {
+        // toggle arah
+        sortDir = sortDir === "asc" ? "desc" : "asc";
+      } else {
+        sortField = newField;
+        // default arah untuk field baru: asc, kecuali timestamp default desc
+        sortDir = newField === "timestamp" ? "desc" : "asc";
+      }
+      currentPage = 1;
+      renderReportTable();
+      updateSortIndicators();
+    });
+  });
+
+  // Render indikator awal
+  updateSortIndicators();
+}
+
+// Tampilkan indikator ▲ / ▼ pada header aktif
+function updateSortIndicators() {
+  const thead = document.querySelector("#report-table thead");
+  if (!thead) return;
+
+  // bersihkan indikator
+  thead.querySelectorAll("th").forEach((th) => {
+    const base = th.getAttribute("data-title-base");
+    if (base) th.textContent = base;
+  });
+
+  thead.querySelectorAll("th[data-field]").forEach((th) => {
+    // simpan teks asli satu kali
+    if (!th.hasAttribute("data-title-base")) {
+      th.setAttribute("data-title-base", th.textContent.trim());
+    }
+    const base = th.getAttribute("data-title-base");
+    const field = th.getAttribute("data-field");
+    if (field === sortField) {
+      const arrow = sortDir === "asc" ? " ▲" : " ▼";
+      th.textContent = base + arrow;
+    } else {
+      th.textContent = base;
+    }
+  });
 }
