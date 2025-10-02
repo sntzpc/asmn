@@ -1,0 +1,17 @@
+{
+  "name": "Uji Kompetensi Mandor - Karyamas Plantation",
+  "short_name": "Ukom Mandor",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f5f5f5",
+  "theme_color": "#1b5e20",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='64' height='64'%3E%3Ctext y='54' x='2' font-size='56'%3E%F0%9F%93%9D%3C/text%3E%3C/svg%3E",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

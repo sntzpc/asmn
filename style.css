@@ -307,3 +307,37 @@ body {
 
 .card[role="button"] { cursor: pointer; transition: transform .1s ease; }
 .card[role="button"]:hover { transform: translateY(-2px); }
+
+/* Outbox */
+.badge-sync-ok { background:#28a745; }
+.badge-sync-fail { background:#dc3545; }
+.badge-sync-warn { background:#ffc107; color:#000; }
+td.break-anywhere { word-break: break-word; }
+
+/* THEME: Dark Mode */
+:root.dark {
+  --primary-color: #0f3d18;
+  --secondary-color: #2f6d34;
+  --accent-color: #3f7b3f;
+  --light-color: #0b1a0c;
+  --dark-color: #0a2b12;
+}
+
+body.dark {
+  background-color: #0b1a0c;
+  color: #e6e6e6;
+}
+
+body.dark .navbar.navbar-dark { background-color: #0a2b12 !important; }
+body.dark .sidebar { background-color: var(--primary-color); }
+body.dark .card { background-color: #122016; color:#e6e6e6; }
+body.dark .card-header { background-color: #0a2b12; color:#e6e6e6; }
+body.dark .table thead { background-color: #0a2b12; }
+body.dark .table-striped tbody tr:nth-of-type(odd) { background-color: rgba(255,255,255,.03); }
+body.dark .form-control, 
+body.dark .form-select { background:#0d1a11; color:#e6e6e6; border-color:#1f3a26; }
+body.dark .form-control:focus { box-shadow: 0 0 0 0.2rem rgba(33, 150, 83, 0.25); }
+body.dark .dropdown-menu { background:#0d1a11; color:#e6e6e6; border-color:#1f3a26; }
+body.dark .dropdown-item { color:#e6e6e6; }
+body.dark .dropdown-item:hover { background:#16321f; }
+body.dark .btn-outline-light { border-color: rgba(255,255,255,.3); }

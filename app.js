@@ -8,27 +8,27 @@ let pageSize = 20;
 let filteredNilaiData = [];
 let _editingId = null;
 // ===== Dashboard Drilldown State =====
-let _dashData = [];               // cache data hasil filter Dashboard terakhir
-let _drillLevel = 'region';       // 'region' | 'unit' | 'table'
+let _dashData = []; // cache data hasil filter Dashboard terakhir
+let _drillLevel = "region"; // 'region' | 'unit' | 'table'
 let _selectedRegion = null;
 let _selectedUnit = null;
 let _drillCurrentPage = 1;
 let _drillPageSize = 20;
-let _drillSearch = '';
-let _drillModal = null;           // instance Bootstrap Modal
+let _drillSearch = "";
+let _drillModal = null; // instance Bootstrap Modal
 
 // ===== Drilldown (tambahan untuk Distribusi) =====
-let _drillCustomData = null;   // array data khusus (mode distribusi). null = mode region/unit
-let _drillCustomTitle = '';    // judul konteks custom (mis. "Distribusi 80–89")
+let _drillCustomData = null; // array data khusus (mode distribusi). null = mode region/unit
+let _drillCustomTitle = ""; // judul konteks custom (mis. "Distribusi 80–89")
 
 // Bucket global agar bisa dipakai ulang (grafik & drilldown)
 const SCORE_BUCKETS = [
-  { label: '< 50',   min: -Infinity, max: 49 },
-  { label: '50–59',  min: 50, max: 59 },
-  { label: '60–69',  min: 60, max: 69 },
-  { label: '70–79',  min: 70, max: 79 },
-  { label: '80–89',  min: 80, max: 89 },
-  { label: '≥ 90',   min: 90, max: Infinity },
+  { label: "< 50", min: -Infinity, max: 49 },
+  { label: "50–59", min: 50, max: 59 },
+  { label: "60–69", min: 60, max: 69 },
+  { label: "70–79", min: 70, max: 79 },
+  { label: "80–89", min: 80, max: 89 },
+  { label: "≥ 90", min: 90, max: Infinity },
 ];
 
 // ===== Charts (Chart.js) =====
@@ -115,6 +115,7 @@ function clearSession() {
 
 // Initialize application
 document.addEventListener("DOMContentLoaded", function () {
+initTheme();
   // Auto-login jika sesi valid
   const sessionUser = loadSession();
   if (sessionUser) {
@@ -337,32 +338,43 @@ function setupEventListeners() {
     .getElementById("filter-count")
     .addEventListener("change", updateDashboard);
 
-      // === Drilldown Dashboard ===
-  const cardTotal = document.getElementById('card-total-mandor');
+  // === Drilldown Dashboard ===
+  const cardTotal = document.getElementById("card-total-mandor");
   if (cardTotal) {
-    cardTotal.style.cursor = 'pointer';
-    cardTotal.addEventListener('click', () => {
+    cardTotal.style.cursor = "pointer";
+    cardTotal.addEventListener("click", () => {
       openDrilldownRoot(); // tampilkan level Region
     });
   }
 
   // Kontrol modal (once)
-  const backBtn = document.getElementById('drillback-btn');
-  backBtn.addEventListener('click', handleDrillBack);
+  const backBtn = document.getElementById("drillback-btn");
+  backBtn.addEventListener("click", handleDrillBack);
 
-  document.getElementById('drill-search').addEventListener('input', (e) => {
-    _drillSearch = (e.target.value || '').trim().toLowerCase();
+  document.getElementById("drill-search").addEventListener("input", (e) => {
+    _drillSearch = (e.target.value || "").trim().toLowerCase();
     _drillCurrentPage = 1;
     renderDrillTable();
   });
 
-  document.getElementById('drill-pagesize').addEventListener('change', (e) => {
+  document.getElementById("drill-pagesize").addEventListener("change", (e) => {
     _drillPageSize = parseInt(e.target.value, 10) || 20;
     _drillCurrentPage = 1;
     renderDrillTable();
   });
 
-  document.getElementById('drill-export').addEventListener('click', exportDrillExcel);
+  document
+    .getElementById("drill-export")
+    .addEventListener("click", exportDrillExcel);
+    setupOutboxEvents();
+
+    const themeBtn = document.getElementById('theme-toggle');
+if (themeBtn) {
+  themeBtn.addEventListener('click', () => {
+    const now = localStorage.getItem('theme') === 'dark' ? 'light' : 'dark';
+    applyTheme(now);
+  });
+}
 }
 
 // Initialize UI
@@ -376,6 +388,7 @@ function initializeUI() {
   // Update sync info
   updateSyncInfo();
   initReportSortingHeaders();
+  renderOutboxTable();
 }
 
 // Fungsi login yang terintegrasi dengan GAS
@@ -450,9 +463,6 @@ async function handleLogin(e) {
     hideSpinner();
   }
 }
-
-// Update event listener login form
-document.getElementById("login-form").addEventListener("submit", handleLogin);
 
 // Handle logout
 function handleLogout() {
@@ -971,6 +981,7 @@ function deleteNilaiData(id) {
       nilaiData = nilaiData.filter((item) => item.id !== id);
       localStorage.setItem("nilaiData", JSON.stringify(nilaiData));
       renderReportTable();
+      renderOutboxTable();
 
       Swal.fire("Terhapus!", "Data telah dihapus.", "success");
     }
@@ -1019,36 +1030,42 @@ async function syncDataToGoogleSheets(dataToSync) {
       updateProgress(progress);
 
       try {
-        // Kirim data ke Google Apps Script
         const response = await fetch(GAS_URL, {
           method: "POST",
-          headers: {
-            "Content-Type": "text/plain;charset=utf-8",
-          },
-          body: JSON.stringify({
-            action: "pushScore",
-            row: item,
-          }),
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "pushScore", row: item }),
         });
 
         const result = await response.json();
+        const idxLocal = nilaiData.findIndex((n) => n.id === item.id);
+
         if (result.status === "success") {
           const payload = result.data || {};
-          const usedId = payload._id || item.id; // _id yang dipakai di Sheet (bisa berbeda jika byKey)
-          const itemIndex = nilaiData.findIndex((n) => n.id === item.id);
-
-          if (itemIndex !== -1) {
-            // Jika _id berubah (misal overwrite byKey), update id lokal supaya next sync byId langsung kena
-            nilaiData[itemIndex].id = usedId;
-            nilaiData[itemIndex].synced = true;
-            nilaiData[itemIndex].syncedAt = new Date().toISOString();
-            successCount++;
+          const usedId = payload._id || item.id;
+          if (idxLocal !== -1) {
+            nilaiData[idxLocal].id = String(usedId);
+            nilaiData[idxLocal].synced = true;
+            nilaiData[idxLocal].syncedAt = new Date().toISOString();
+            nilaiData[idxLocal].syncError = ""; // bersihkan pesan error
+            nilaiData[idxLocal].lastSyncAttempt = new Date().toISOString();
           }
+          successCount++;
         } else {
+          if (idxLocal !== -1) {
+            nilaiData[idxLocal].synced = false;
+            nilaiData[idxLocal].syncError = result.message || "Unknown error";
+            nilaiData[idxLocal].lastSyncAttempt = new Date().toISOString();
+          }
           errorCount++;
           console.error("Sync error:", result.message);
         }
       } catch (error) {
+        const idxLocal = nilaiData.findIndex((n) => n.id === item.id);
+        if (idxLocal !== -1) {
+          nilaiData[idxLocal].synced = false;
+          nilaiData[idxLocal].syncError = error?.message || "Network error";
+          nilaiData[idxLocal].lastSyncAttempt = new Date().toISOString();
+        }
         errorCount++;
         console.error("Network error:", error);
       }
@@ -1076,6 +1093,7 @@ async function syncDataToGoogleSheets(dataToSync) {
 
     renderReportTable();
     updateSyncInfo();
+    renderOutboxTable();
   } catch (error) {
     hideProgressModal();
     Swal.fire({
@@ -1224,6 +1242,7 @@ async function pullMasterDataFromGoogleSheets() {
     // Refresh Report & Dashboard
     renderReportTable();
     updateDashboard();
+    renderOutboxTable();
   } catch (error) {
     hideProgressModal();
     console.error("Error pulling data:", error);
@@ -1363,6 +1382,133 @@ function updateSyncInfo() {
 
   const lastUpdate = localStorage.getItem("masterDataLastUpdate") || "-";
   document.getElementById("master-data-last-update").textContent = lastUpdate;
+}
+
+function getOutboxItems() {
+  // Semua yang belum synced
+  return (nilaiData || []).filter(x => !x.synced);
+}
+
+function getFailedOnly() {
+  // Belum synced & punya pesan error sebelumnya
+  return (nilaiData || []).filter(x => !x.synced && x.syncError);
+}
+
+function renderOutboxTable() {
+  const tbody = document.querySelector("#outbox-table tbody");
+  const summary = document.getElementById("outbox-summary");
+  if (!tbody || !summary) return;
+
+  const items = getOutboxItems();
+  tbody.innerHTML = "";
+
+  if (items.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="9" class="text-center text-muted py-3">Tidak ada item di Outbox.</td></tr>`;
+    summary.textContent = "Outbox kosong.";
+    return;
+  }
+
+  items.forEach((it) => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><input type="checkbox" class="outbox-row" data-id="${it.id}"></td>
+      <td>${it.nip}</td>
+      <td>${it.nama}</td>
+      <td>${it.unit}</td>
+      <td>${it.region}</td>
+      <td><strong>${it.totalNilai}</strong></td>
+      <td>${it.lastSyncAttempt ? new Date(it.lastSyncAttempt).toLocaleString("id-ID") : "-"}</td>
+      <td class="break-anywhere">
+        ${
+          it.syncError
+            ? `<span class="badge badge-sync-fail">Gagal</span> ${it.syncError}`
+            : `<span class="badge badge-sync-warn">Belum dicoba</span>`
+        }
+      </td>
+      <td>
+        <div class="btn-group btn-group-sm">
+          <button class="btn btn-outline-primary ob-retry-one" data-id="${it.id}" title="Coba kirim ulang"><i class="fas fa-redo-alt"></i></button>
+          <button class="btn btn-outline-danger ob-remove-one" data-id="${it.id}" title="Hapus dari lokal"><i class="fas fa-trash"></i></button>
+        </div>
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+
+  const failCount = items.filter(x => x.syncError).length;
+  summary.textContent = `Belum Sync: ${items.length} item • Gagal sebelumnya: ${failCount} item.`;
+  // Re-bind actions
+  document.querySelectorAll(".ob-retry-one").forEach(btn => {
+    btn.addEventListener("click", async function() {
+      const id = this.getAttribute("data-id");
+      const one = nilaiData.find(x => x.id === id && !x.synced);
+      if (!one) return;
+      await syncDataToGoogleSheets([one]);
+      renderOutboxTable();
+      renderReportTable();
+      updateSyncInfo();
+    });
+  });
+  document.querySelectorAll(".ob-remove-one").forEach(btn => {
+    btn.addEventListener("click", async function() {
+      const id = this.getAttribute("data-id");
+      const ok = await Swal.fire({
+        icon:"warning",
+        title:"Hapus Data Lokal?",
+        text:"Item akan dihapus dari penyimpanan lokal (tidak mempengaruhi data di Sheet).",
+        showCancelButton:true,
+        confirmButtonText:"Hapus",
+        cancelButtonText:"Batal"
+      });
+      if (!ok.isConfirmed) return;
+      nilaiData = nilaiData.filter(x => x.id !== id);
+      localStorage.setItem("nilaiData", JSON.stringify(nilaiData));
+      renderOutboxTable();
+      renderReportTable();
+      updateSyncInfo();
+    });
+  });
+}
+
+// Listener tombol-tombol Outbox (panggil ini dari setupEventListeners)
+function setupOutboxEvents() {
+  const selAll = document.getElementById("outbox-select-all");
+  if (selAll) {
+    selAll.addEventListener("change", () => {
+      const checked = selAll.checked;
+      document.querySelectorAll(".outbox-row").forEach(cb => cb.checked = checked);
+    });
+  }
+
+  const retryFailedBtn = document.getElementById("retry-failed-only");
+  if (retryFailedBtn) {
+    retryFailedBtn.addEventListener("click", async () => {
+      const batch = getFailedOnly();
+      if (batch.length === 0) {
+        Swal.fire({ icon:"info", title:"Tidak Ada", text:"Tidak ada item gagal sebelumnya." });
+        return;
+      }
+      await syncDataToGoogleSheets(batch);
+      renderOutboxTable();
+      renderReportTable();
+      updateSyncInfo();
+    });
+  }
+
+  const retryAllUnsyncedBtn = document.getElementById("retry-all-unsynced");
+  if (retryAllUnsyncedBtn) {
+    retryAllUnsyncedBtn.addEventListener("click", async () => {
+      const batch = getOutboxItems();
+      if (batch.length === 0) {
+        Swal.fire({ icon:"info", title:"Tidak Ada", text:"Outbox kosong." });
+        return;
+      }
+      await syncDataToGoogleSheets(batch);
+      renderOutboxTable();
+      renderReportTable();
+      updateSyncInfo();
+    });
+  }
 }
 
 // Fungsi untuk sync users ke Google Sheet
@@ -1950,7 +2096,7 @@ function updateDashboard() {
 
   // Filter nilai data
   let filteredData = [...nilaiData];
-    _dashData = filteredData;
+  _dashData = filteredData;
 
   if (regionFilter) {
     filteredData = filteredData.filter((item) => item.region === regionFilter);
@@ -2057,35 +2203,38 @@ function updateCharts(data) {
   });
 
   // ===== Pie/Doughnut: Distribusi Nilai (bucket) =====
-  const bucketCounts = SCORE_BUCKETS.map(b =>
-  data.filter(x => x.totalNilai >= b.min && x.totalNilai <= b.max).length
-);
+  const bucketCounts = SCORE_BUCKETS.map(
+    (b) =>
+      data.filter((x) => x.totalNilai >= b.min && x.totalNilai <= b.max).length
+  );
 
-const ctxPie = document.getElementById('scoreDistributionCanvas').getContext('2d');
-destroyChartIfAny(_chartDistribusi);
-_chartDistribusi = new Chart(ctxPie, {
-  type: 'doughnut',
-  data: {
-    labels: SCORE_BUCKETS.map(b => b.label),
-    datasets: [{ data: bucketCounts }]
-  },
-  options: {
-    responsive: true,
-    maintainAspectRatio: false,
-    plugins: {
-      legend: { position: 'bottom' }
+  const ctxPie = document
+    .getElementById("scoreDistributionCanvas")
+    .getContext("2d");
+  destroyChartIfAny(_chartDistribusi);
+  _chartDistribusi = new Chart(ctxPie, {
+    type: "doughnut",
+    data: {
+      labels: SCORE_BUCKETS.map((b) => b.label),
+      datasets: [{ data: bucketCounts }],
     },
-    cutout: '55%',
-    // <<<=== Klik segmen -> buka drilldown table distribusi
-    onClick: (evt, elements) => {
-      if (elements && elements.length) {
-        const seg = elements[0];
-        const idx = seg.index;        // index bucket
-        openDistributionDrill(idx);
-      }
-    }
-  }
-});
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: "bottom" },
+      },
+      cutout: "55%",
+      // <<<=== Klik segmen -> buka drilldown table distribusi
+      onClick: (evt, elements) => {
+        if (elements && elements.length) {
+          const seg = elements[0];
+          const idx = seg.index; // index bucket
+          openDistributionDrill(idx);
+        }
+      },
+    },
+  });
 }
 
 /* ===========================
@@ -2093,53 +2242,59 @@ _chartDistribusi = new Chart(ctxPie, {
    =========================== */
 
 function openDrilldownRoot() {
-  _drillLevel = 'region';
+  _drillLevel = "region";
   _selectedRegion = null;
   _selectedUnit = null;
-  _drillCustomData = null;      // <── reset jika sebelumnya dari mode distribusi
-  _drillCustomTitle = '';
+  _drillCustomData = null; // <── reset jika sebelumnya dari mode distribusi
+  _drillCustomTitle = "";
   _drillCurrentPage = 1;
   _drillPageSize = 20;
-  _drillSearch = '';
+  _drillSearch = "";
 
   // Modal instance
   if (!_drillModal) {
-    _drillModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
+    _drillModal = new bootstrap.Modal(
+      document.getElementById("drilldownModal")
+    );
   }
-  document.getElementById('drilldownModalLabel').textContent = 'Rincian per Region';
-  document.getElementById('drill-controls').classList.add('d-none');
-  document.getElementById('drill-pagination-wrap').classList.add('d-none');
+  document.getElementById("drilldownModalLabel").textContent =
+    "Rincian per Region";
+  document.getElementById("drill-controls").classList.add("d-none");
+  document.getElementById("drill-pagination-wrap").classList.add("d-none");
 
   renderRegionCards();
   _drillModal.show();
 }
 
 function handleDrillBack() {
- // Jika sedang di mode tabel "Distribusi" (custom), tombol kembali = tutup modal
+  // Jika sedang di mode tabel "Distribusi" (custom), tombol kembali = tutup modal
   if (_drillCustomData) {
-    const modalEl = document.getElementById('drilldownModal');
+    const modalEl = document.getElementById("drilldownModal");
     const inst = bootstrap.Modal.getInstance(modalEl);
     if (inst) inst.hide();
     return;
   }
-  if (_drillLevel === 'table') {
+  if (_drillLevel === "table") {
     // kembali ke unit list
-    _drillLevel = 'unit';
-    document.getElementById('drilldownModalLabel').textContent = `Region: ${_selectedRegion} • Pilih Unit`;
-    document.getElementById('drill-controls').classList.add('d-none');
-    document.getElementById('drill-pagination-wrap').classList.add('d-none');
+    _drillLevel = "unit";
+    document.getElementById(
+      "drilldownModalLabel"
+    ).textContent = `Region: ${_selectedRegion} • Pilih Unit`;
+    document.getElementById("drill-controls").classList.add("d-none");
+    document.getElementById("drill-pagination-wrap").classList.add("d-none");
     renderUnitCards(_selectedRegion);
-  } else if (_drillLevel === 'unit') {
+  } else if (_drillLevel === "unit") {
     // kembali ke region list
-    _drillLevel = 'region';
+    _drillLevel = "region";
     _selectedRegion = null;
-    document.getElementById('drilldownModalLabel').textContent = 'Rincian per Region';
-    document.getElementById('drill-controls').classList.add('d-none');
-    document.getElementById('drill-pagination-wrap').classList.add('d-none');
+    document.getElementById("drilldownModalLabel").textContent =
+      "Rincian per Region";
+    document.getElementById("drill-controls").classList.add("d-none");
+    document.getElementById("drill-pagination-wrap").classList.add("d-none");
     renderRegionCards();
   } else {
     // level region -> close
-    const modalEl = document.getElementById('drilldownModal');
+    const modalEl = document.getElementById("drilldownModal");
     const inst = bootstrap.Modal.getInstance(modalEl);
     if (inst) inst.hide();
   }
@@ -2147,13 +2302,13 @@ function handleDrillBack() {
 
 /* ---- RENDER REGION KARTU ---- */
 function renderRegionCards() {
-  const body = document.getElementById('drill-body');
-  body.innerHTML = '';
+  const body = document.getElementById("drill-body");
+  body.innerHTML = "";
 
   // Hitung jumlah per Region
   const map = new Map();
-  _dashData.forEach(it => {
-    const r = (it.region || '').trim();
+  _dashData.forEach((it) => {
+    const r = (it.region || "").trim();
     if (!r) return;
     if (!map.has(r)) map.set(r, []);
     map.get(r).push(it);
@@ -2165,13 +2320,15 @@ function renderRegionCards() {
   }
 
   // Grid kartu region
-  const row = document.createElement('div');
-  row.className = 'row g-3';
-  Array.from(map.keys()).sort().forEach(region => {
-    const arr = map.get(region) || [];
-    const col = document.createElement('div');
-    col.className = 'col-sm-6 col-md-4 col-lg-3';
-    col.innerHTML = `
+  const row = document.createElement("div");
+  row.className = "row g-3";
+  Array.from(map.keys())
+    .sort()
+    .forEach((region) => {
+      const arr = map.get(region) || [];
+      const col = document.createElement("div");
+      col.className = "col-sm-6 col-md-4 col-lg-3";
+      col.innerHTML = `
       <div class="card h-100 shadow-sm border-0" role="button" title="Lihat unit di ${region}">
         <div class="card-body d-flex flex-column">
           <h5 class="card-title mb-1">${region}</h5>
@@ -2183,27 +2340,29 @@ function renderRegionCards() {
         </div>
       </div>
     `;
-    col.querySelector('.card').addEventListener('click', () => {
-      _selectedRegion = region;
-      _drillLevel = 'unit';
-      document.getElementById('drilldownModalLabel').textContent = `Region: ${region} • Pilih Unit`;
-      renderUnitCards(region);
+      col.querySelector(".card").addEventListener("click", () => {
+        _selectedRegion = region;
+        _drillLevel = "unit";
+        document.getElementById(
+          "drilldownModalLabel"
+        ).textContent = `Region: ${region} • Pilih Unit`;
+        renderUnitCards(region);
+      });
+      row.appendChild(col);
     });
-    row.appendChild(col);
-  });
   body.appendChild(row);
 }
 
 /* ---- RENDER UNIT KARTU ---- */
 function renderUnitCards(region) {
-  const body = document.getElementById('drill-body');
-  body.innerHTML = '';
+  const body = document.getElementById("drill-body");
+  body.innerHTML = "";
 
   // Group per Unit di region terpilih
-  const dataR = _dashData.filter(x => x.region === region);
+  const dataR = _dashData.filter((x) => x.region === region);
   const map = new Map();
-  dataR.forEach(it => {
-    const u = (it.unit || '').trim();
+  dataR.forEach((it) => {
+    const u = (it.unit || "").trim();
     if (!u) return;
     if (!map.has(u)) map.set(u, []);
     map.get(u).push(it);
@@ -2214,23 +2373,37 @@ function renderUnitCards(region) {
     return;
   }
 
-  const row = document.createElement('div');
-  row.className = 'row g-3';
-  Array.from(map.keys()).sort().forEach(unit => {
-    const arr = map.get(unit) || [];
-    const contohNama = arr.slice(0, 3).map(a => a.nama).filter(Boolean);
-    const sisa = Math.max(arr.length - contohNama.length, 0);
+  const row = document.createElement("div");
+  row.className = "row g-3";
+  Array.from(map.keys())
+    .sort()
+    .forEach((unit) => {
+      const arr = map.get(unit) || [];
+      const contohNama = arr
+        .slice(0, 3)
+        .map((a) => a.nama)
+        .filter(Boolean);
+      const sisa = Math.max(arr.length - contohNama.length, 0);
 
-    const col = document.createElement('div');
-    col.className = 'col-sm-6 col-md-4 col-lg-3';
-    col.innerHTML = `
+      const col = document.createElement("div");
+      col.className = "col-sm-6 col-md-4 col-lg-3";
+      col.innerHTML = `
       <div class="card h-100 shadow-sm border-0" role="button" title="Lihat tabel di unit ${unit}">
         <div class="card-body d-flex flex-column">
           <h5 class="card-title mb-1">${unit}</h5>
           <div class="text-muted small mb-2">Unit • ${arr.length} mandor</div>
           <div class="small flex-grow-0">
-            ${contohNama.map(n => `<span class="badge bg-light text-dark me-1 mb-1">${n}</span>`).join('')}
-            ${sisa > 0 ? `<span class="badge bg-secondary">+${sisa} lagi</span>` : ''}
+            ${contohNama
+              .map(
+                (n) =>
+                  `<span class="badge bg-light text-dark me-1 mb-1">${n}</span>`
+              )
+              .join("")}
+            ${
+              sisa > 0
+                ? `<span class="badge bg-secondary">+${sisa} lagi</span>`
+                : ""
+            }
           </div>
           <div class="mt-auto pt-2">
             <span class="badge bg-primary">Klik untuk tabel</span>
@@ -2238,32 +2411,36 @@ function renderUnitCards(region) {
         </div>
       </div>
     `;
-    col.querySelector('.card').addEventListener('click', () => {
-      _selectedUnit = unit;
-      _drillLevel = 'table';
-      _drillCurrentPage = 1;
-      _drillPageSize = 20;
-      _drillSearch = '';
-      document.getElementById('drilldownModalLabel').textContent = `Region: ${region} • Unit: ${unit} • Tabel Mandor`;
-      document.getElementById('drill-controls').classList.remove('d-none');
-      document.getElementById('drill-pagination-wrap').classList.remove('d-none');
-      // reset control values
-      document.getElementById('drill-search').value = '';
-      document.getElementById('drill-pagesize').value = '20';
-      renderDrillTable();
+      col.querySelector(".card").addEventListener("click", () => {
+        _selectedUnit = unit;
+        _drillLevel = "table";
+        _drillCurrentPage = 1;
+        _drillPageSize = 20;
+        _drillSearch = "";
+        document.getElementById(
+          "drilldownModalLabel"
+        ).textContent = `Region: ${region} • Unit: ${unit} • Tabel Mandor`;
+        document.getElementById("drill-controls").classList.remove("d-none");
+        document
+          .getElementById("drill-pagination-wrap")
+          .classList.remove("d-none");
+        // reset control values
+        document.getElementById("drill-search").value = "";
+        document.getElementById("drill-pagesize").value = "20";
+        renderDrillTable();
+      });
+      row.appendChild(col);
     });
-    row.appendChild(col);
-  });
   body.appendChild(row);
 
   // Pastikan controls/pagination hidden saat level unit
-  document.getElementById('drill-controls').classList.add('d-none');
-  document.getElementById('drill-pagination-wrap').classList.add('d-none');
+  document.getElementById("drill-controls").classList.add("d-none");
+  document.getElementById("drill-pagination-wrap").classList.add("d-none");
 }
 
 /* ---- TABEL DENGAN PAGING, SEARCH, EXPORT ---- */
 function renderDrillTable() {
-  const body = document.getElementById('drill-body');
+  const body = document.getElementById("drill-body");
   // === Sumber data ===
   let data;
   if (_drillCustomData) {
@@ -2273,16 +2450,16 @@ function renderDrillTable() {
     // Mode region/unit seperti sebelumnya
     const region = _selectedRegion;
     const unit = _selectedUnit;
-    data = _dashData.filter(x => x.region === region && x.unit === unit);
+    data = _dashData.filter((x) => x.region === region && x.unit === unit);
   }
 
   // Search
   if (_drillSearch) {
     const s = _drillSearch;
-    data = data.filter(x =>
-      [
-        x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade
-      ].some(v => (v || '').toString().toLowerCase().includes(s))
+    data = data.filter((x) =>
+      [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade].some(
+        (v) => (v || "").toString().toLowerCase().includes(s)
+      )
     );
   }
 
@@ -2316,7 +2493,9 @@ function renderDrillTable() {
           </tr>
         </thead>
         <tbody>
-          ${pageData.map((it, i) => `
+          ${pageData
+            .map(
+              (it, i) => `
             <tr>
               <td>${start + i + 1}</td>
               <td>${it.nip}</td>
@@ -2329,14 +2508,22 @@ function renderDrillTable() {
               <td>${it.nilaiBKM}</td>
               <td><strong>${it.totalNilai}</strong></td>
             </tr>
-          `).join('')}
-          ${pageData.length === 0 ? `
+          `
+            )
+            .join("")}
+          ${
+            pageData.length === 0
+              ? `
             <tr><td colspan="10" class="text-center text-muted py-4">Tidak ada data.</td></tr>
-          ` : ''}
+          `
+              : ""
+          }
         </tbody>
       </table>
     </div>
-    <div class="mt-2 small text-muted">Menampilkan ${pageData.length} dari ${total} data.</div>
+    <div class="mt-2 small text-muted">Menampilkan ${
+      pageData.length
+    } dari ${total} data.</div>
   `;
   body.innerHTML = tbl;
 
@@ -2345,24 +2532,32 @@ function renderDrillTable() {
 }
 
 function renderDrillPagination(totalPages) {
-  const ul = document.getElementById('drill-pagination');
-  ul.innerHTML = '';
+  const ul = document.getElementById("drill-pagination");
+  ul.innerHTML = "";
 
-  const addItem = (label, page, disabled = false, active = false, isEllipsis = false) => {
-    const li = document.createElement('li');
-    li.className = `page-item ${disabled ? 'disabled' : ''} ${active ? 'active' : ''}`;
-    const a = document.createElement('a');
-    a.className = 'page-link';
-    a.href = '#';
+  const addItem = (
+    label,
+    page,
+    disabled = false,
+    active = false,
+    isEllipsis = false
+  ) => {
+    const li = document.createElement("li");
+    li.className = `page-item ${disabled ? "disabled" : ""} ${
+      active ? "active" : ""
+    }`;
+    const a = document.createElement("a");
+    a.className = "page-link";
+    a.href = "#";
     a.textContent = label;
     if (!isEllipsis && !disabled) {
-      a.addEventListener('click', (e) => {
+      a.addEventListener("click", (e) => {
         e.preventDefault();
         _drillCurrentPage = page;
         renderDrillTable();
       });
     }
-    if (isEllipsis) li.classList.add('disabled');
+    if (isEllipsis) li.classList.add("disabled");
     li.appendChild(a);
     ul.appendChild(li);
   };
@@ -2370,19 +2565,19 @@ function renderDrillPagination(totalPages) {
   const cur = _drillCurrentPage;
 
   // Prev
-  addItem('Prev', Math.max(1, cur - 1), cur === 1);
+  addItem("Prev", Math.max(1, cur - 1), cur === 1);
 
   const pages = paginationWindow(cur, totalPages);
-  pages.forEach(p => {
-    if (p === '...') {
-      addItem('...', cur, true, false, true);
+  pages.forEach((p) => {
+    if (p === "...") {
+      addItem("...", cur, true, false, true);
     } else {
       addItem(String(p), p, false, p === cur);
     }
   });
 
   // Next
-  addItem('Next', Math.min(totalPages, cur + 1), cur === totalPages);
+  addItem("Next", Math.min(totalPages, cur + 1), cur === totalPages);
 }
 
 /* window halaman model ellipsis */
@@ -2394,7 +2589,13 @@ function paginationWindow(current, total) {
 
   // Always show 1 & total; show around current +/- delta; show 2 & total-1 jika perlu
   for (let i = 1; i <= total; i++) {
-    if (i === 1 || i === total || (i >= current - delta && i <= current + delta) || i === 2 || i === total - 1) {
+    if (
+      i === 1 ||
+      i === total ||
+      (i >= current - delta && i <= current + delta) ||
+      i === 2 ||
+      i === total - 1
+    ) {
       range.push(i);
     }
   }
@@ -2403,7 +2604,7 @@ function paginationWindow(current, total) {
       if (i - l === 2) {
         rangeWithDots.push(l + 1);
       } else if (i - l !== 1) {
-        rangeWithDots.push('...');
+        rangeWithDots.push("...");
       }
     }
     rangeWithDots.push(i);
@@ -2414,7 +2615,7 @@ function paginationWindow(current, total) {
 
 /* Export Excel untuk level tabel */
 function exportDrillExcel() {
-  if (_drillLevel !== 'table') return;
+  if (_drillLevel !== "table") return;
 
   // Tentukan sumber data & nama file berdasarkan mode:
   // - Mode "Distribusi" (grafik doughnut): _drillCustomData aktif
@@ -2429,9 +2630,10 @@ function exportDrillExcel() {
     // Terapkan search (tanpa paging)
     if (_drillSearch) {
       const s = _drillSearch;
-      data = data.filter(x =>
-        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
-          .some(v => (v || '').toString().toLowerCase().includes(s))
+      data = data.filter((x) =>
+        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade].some(
+          (v) => (v || "").toString().toLowerCase().includes(s)
+        )
       );
     }
 
@@ -2439,22 +2641,26 @@ function exportDrillExcel() {
     data.sort((a, b) => b.totalNilai - a.totalNilai);
 
     // Nama file dari judul distribusi, fallback "Nilai"
-    const safeTitle = (_drillCustomTitle || 'Nilai').replace(/[\\/:*?"<>|]+/g, '_');
+    const safeTitle = (_drillCustomTitle || "Nilai").replace(
+      /[\\/:*?"<>|]+/g,
+      "_"
+    );
     fname = `Distribusi_${safeTitle}.xlsx`;
   } else {
     // === MODE REGION/UNIT ===
     const region = _selectedRegion;
-    const unit   = _selectedUnit;
+    const unit = _selectedUnit;
 
     // Ambil ulang data (tanpa paging)
-    data = _dashData.filter(x => x.region === region && x.unit === unit);
+    data = _dashData.filter((x) => x.region === region && x.unit === unit);
 
     // Terapkan search (tanpa paging)
     if (_drillSearch) {
       const s = _drillSearch;
-      data = data.filter(x =>
-        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
-          .some(v => (v || '').toString().toLowerCase().includes(s))
+      data = data.filter((x) =>
+        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade].some(
+          (v) => (v || "").toString().toLowerCase().includes(s)
+        )
       );
     }
 
@@ -2462,7 +2668,10 @@ function exportDrillExcel() {
     data.sort((a, b) => b.totalNilai - a.totalNilai);
 
     // Nama file gunakan Region_Unit
-    fname = `Mandor_${region || 'ALL'}_${unit || 'ALL'}.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
+    fname = `Mandor_${region || "ALL"}_${unit || "ALL"}.xlsx`.replace(
+      /[\\/:*?"<>|]+/g,
+      "_"
+    );
   }
 
   // Buat worksheet
@@ -2474,19 +2683,22 @@ function exportDrillExcel() {
       Region: item.region,
       Unit: item.unit,
       Divisi: item.divisi,
-      'Kode Jabatan': item.jabatan,
+      "Kode Jabatan": item.jabatan,
       Grade: item.grade,
-      'Nilai Isian': item.nilaiIsian,
-      'Nilai BKM': item.nilaiBKM,
-      'Total Nilai': item.totalNilai,
-      'Input By': item.inputBy || '',
-      Timestamp: new Date(item.timestamp).toLocaleString('id-ID')
+      "Nilai Isian": item.nilaiIsian,
+      "Nilai BKM": item.nilaiBKM,
+      "Total Nilai": item.totalNilai,
+      "Input By": item.inputBy || "",
+      Timestamp: new Date(item.timestamp).toLocaleString("id-ID"),
     }))
   );
 
   // Buat workbook + nama sheet
   const wb = XLSX.utils.book_new();
-  const sheetName = (_drillCustomData ? 'Distribusi' : (_selectedUnit || 'Unit')).toString().slice(0, 28) || 'Data';
+  const sheetName =
+    (_drillCustomData ? "Distribusi" : _selectedUnit || "Unit")
+      .toString()
+      .slice(0, 28) || "Data";
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
 
   // Simpan file
@@ -2671,28 +2883,49 @@ function openDistributionDrill(bucketIndex) {
   if (!bucket) return;
 
   // Data sumber = _dashData (mengikuti filter dashboard aktif)
-  const data = _dashData.filter(x => {
+  const data = _dashData.filter((x) => {
     const t = Number(x.totalNilai || 0);
     return t >= bucket.min && t <= bucket.max;
   });
 
-  _drillCustomData  = data;               // aktifkan mode distribusi
+  _drillCustomData = data; // aktifkan mode distribusi
   _drillCustomTitle = `Distribusi ${bucket.label}`;
-  _drillLevel       = 'table';
-  _drillSearch      = '';
-  _drillPageSize    = 20;
+  _drillLevel = "table";
+  _drillSearch = "";
+  _drillPageSize = 20;
   _drillCurrentPage = 1;
 
   if (!_drillModal) {
-    _drillModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
+    _drillModal = new bootstrap.Modal(
+      document.getElementById("drilldownModal")
+    );
   }
 
-  document.getElementById('drilldownModalLabel').textContent = _drillCustomTitle;
-  document.getElementById('drill-controls').classList.remove('d-none');
-  document.getElementById('drill-pagination-wrap').classList.remove('d-none');
-  document.getElementById('drill-search').value = '';
-  document.getElementById('drill-pagesize').value = '20';
+  document.getElementById("drilldownModalLabel").textContent =
+    _drillCustomTitle;
+  document.getElementById("drill-controls").classList.remove("d-none");
+  document.getElementById("drill-pagination-wrap").classList.remove("d-none");
+  document.getElementById("drill-search").value = "";
+  document.getElementById("drill-pagesize").value = "20";
 
   renderDrillTable();
   _drillModal.show();
+}
+
+function applyTheme(theme) {
+  const isDark = theme === 'dark';
+  document.documentElement.classList.toggle('dark', isDark);
+  document.body.classList.toggle('dark', isDark);
+  localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  // ganti icon
+  const btn = document.getElementById('theme-toggle');
+  if (btn) {
+    btn.innerHTML = isDark ? '<i class="fas fa-sun"></i>' : '<i class="fas fa-moon"></i>';
+  }
+}
+
+function initTheme() {
+  const saved = localStorage.getItem('theme');
+  const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+  applyTheme(saved || (prefersDark ? 'dark' : 'light'));
 }
