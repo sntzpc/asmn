@@ -17,6 +17,19 @@ let _drillPageSize = 20;
 let _drillSearch = '';
 let _drillModal = null;           // instance Bootstrap Modal
 
+// ===== Drilldown (tambahan untuk Distribusi) =====
+let _drillCustomData = null;   // array data khusus (mode distribusi). null = mode region/unit
+let _drillCustomTitle = '';    // judul konteks custom (mis. "Distribusi 80–89")
+
+// Bucket global agar bisa dipakai ulang (grafik & drilldown)
+const SCORE_BUCKETS = [
+  { label: '< 50',   min: -Infinity, max: 49 },
+  { label: '50–59',  min: 50, max: 59 },
+  { label: '60–69',  min: 60, max: 69 },
+  { label: '70–79',  min: 70, max: 79 },
+  { label: '80–89',  min: 80, max: 89 },
+  { label: '≥ 90',   min: 90, max: Infinity },
+];
 
 // ===== Charts (Chart.js) =====
 let _chartTop10 = null;
@@ -2044,39 +2057,35 @@ function updateCharts(data) {
   });
 
   // ===== Pie/Doughnut: Distribusi Nilai (bucket) =====
-  // Kelompokkan Total Nilai ke bucket: <50, 50-59, 60-69, 70-79, 80-89, >=90
-  const buckets = [
-    { label: "< 50", min: -Infinity, max: 49 },
-    { label: "50–59", min: 50, max: 59 },
-    { label: "60–69", min: 60, max: 69 },
-    { label: "70–79", min: 70, max: 79 },
-    { label: "80–89", min: 80, max: 89 },
-    { label: "≥ 90", min: 90, max: Infinity },
-  ];
-  const bucketCounts = buckets.map(
-    (b) =>
-      data.filter((x) => x.totalNilai >= b.min && x.totalNilai <= b.max).length
-  );
+  const bucketCounts = SCORE_BUCKETS.map(b =>
+  data.filter(x => x.totalNilai >= b.min && x.totalNilai <= b.max).length
+);
 
-  const ctxPie = document
-    .getElementById("scoreDistributionCanvas")
-    .getContext("2d");
-  destroyChartIfAny(_chartDistribusi);
-  _chartDistribusi = new Chart(ctxPie, {
-    type: "doughnut",
-    data: {
-      labels: buckets.map((b) => b.label),
-      datasets: [{ data: bucketCounts }],
+const ctxPie = document.getElementById('scoreDistributionCanvas').getContext('2d');
+destroyChartIfAny(_chartDistribusi);
+_chartDistribusi = new Chart(ctxPie, {
+  type: 'doughnut',
+  data: {
+    labels: SCORE_BUCKETS.map(b => b.label),
+    datasets: [{ data: bucketCounts }]
+  },
+  options: {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+      legend: { position: 'bottom' }
     },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: { position: "bottom" },
-      },
-      cutout: "55%",
-    },
-  });
+    cutout: '55%',
+    // <<<=== Klik segmen -> buka drilldown table distribusi
+    onClick: (evt, elements) => {
+      if (elements && elements.length) {
+        const seg = elements[0];
+        const idx = seg.index;        // index bucket
+        openDistributionDrill(idx);
+      }
+    }
+  }
+});
 }
 
 /* ===========================
@@ -2087,6 +2096,8 @@ function openDrilldownRoot() {
   _drillLevel = 'region';
   _selectedRegion = null;
   _selectedUnit = null;
+  _drillCustomData = null;      // <── reset jika sebelumnya dari mode distribusi
+  _drillCustomTitle = '';
   _drillCurrentPage = 1;
   _drillPageSize = 20;
   _drillSearch = '';
@@ -2104,6 +2115,13 @@ function openDrilldownRoot() {
 }
 
 function handleDrillBack() {
+ // Jika sedang di mode tabel "Distribusi" (custom), tombol kembali = tutup modal
+  if (_drillCustomData) {
+    const modalEl = document.getElementById('drilldownModal');
+    const inst = bootstrap.Modal.getInstance(modalEl);
+    if (inst) inst.hide();
+    return;
+  }
   if (_drillLevel === 'table') {
     // kembali ke unit list
     _drillLevel = 'unit';
@@ -2246,11 +2264,17 @@ function renderUnitCards(region) {
 /* ---- TABEL DENGAN PAGING, SEARCH, EXPORT ---- */
 function renderDrillTable() {
   const body = document.getElementById('drill-body');
-  const region = _selectedRegion;
-  const unit = _selectedUnit;
-
-  // Data sumber
-  let data = _dashData.filter(x => x.region === region && x.unit === unit);
+  // === Sumber data ===
+  let data;
+  if (_drillCustomData) {
+    // Mode distribusi: gunakan data custom yang sudah difilter
+    data = _drillCustomData.slice();
+  } else {
+    // Mode region/unit seperti sebelumnya
+    const region = _selectedRegion;
+    const unit = _selectedUnit;
+    data = _dashData.filter(x => x.region === region && x.unit === unit);
+  }
 
   // Search
   if (_drillSearch) {
@@ -2391,20 +2415,57 @@ function paginationWindow(current, total) {
 /* Export Excel untuk level tabel */
 function exportDrillExcel() {
   if (_drillLevel !== 'table') return;
-  const region = _selectedRegion;
-  const unit = _selectedUnit;
 
-  // Ambil ulang data dengan filter + search (tanpa paging)
-  let data = _dashData.filter(x => x.region === region && x.unit === unit);
-  if (_drillSearch) {
-    const s = _drillSearch;
-    data = data.filter(x =>
-      [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
-        .some(v => (v || '').toString().toLowerCase().includes(s))
-    );
+  // Tentukan sumber data & nama file berdasarkan mode:
+  // - Mode "Distribusi" (grafik doughnut): _drillCustomData aktif
+  // - Mode "Region/Unit": gunakan _selectedRegion + _selectedUnit
+  let data;
+  let fname;
+
+  if (_drillCustomData) {
+    // === MODE DISTRIBUSI ===
+    data = _drillCustomData.slice();
+
+    // Terapkan search (tanpa paging)
+    if (_drillSearch) {
+      const s = _drillSearch;
+      data = data.filter(x =>
+        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
+          .some(v => (v || '').toString().toLowerCase().includes(s))
+      );
+    }
+
+    // Urutkan dari nilai tertinggi
+    data.sort((a, b) => b.totalNilai - a.totalNilai);
+
+    // Nama file dari judul distribusi, fallback "Nilai"
+    const safeTitle = (_drillCustomTitle || 'Nilai').replace(/[\\/:*?"<>|]+/g, '_');
+    fname = `Distribusi_${safeTitle}.xlsx`;
+  } else {
+    // === MODE REGION/UNIT ===
+    const region = _selectedRegion;
+    const unit   = _selectedUnit;
+
+    // Ambil ulang data (tanpa paging)
+    data = _dashData.filter(x => x.region === region && x.unit === unit);
+
+    // Terapkan search (tanpa paging)
+    if (_drillSearch) {
+      const s = _drillSearch;
+      data = data.filter(x =>
+        [x.nip, x.nama, x.unit, x.region, x.divisi, x.jabatan, x.grade]
+          .some(v => (v || '').toString().toLowerCase().includes(s))
+      );
+    }
+
+    // Urutkan dari nilai tertinggi
+    data.sort((a, b) => b.totalNilai - a.totalNilai);
+
+    // Nama file gunakan Region_Unit
+    fname = `Mandor_${region || 'ALL'}_${unit || 'ALL'}.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
   }
-  data.sort((a, b) => b.totalNilai - a.totalNilai);
 
+  // Buat worksheet
   const ws = XLSX.utils.json_to_sheet(
     data.map((item, idx) => ({
       No: idx + 1,
@@ -2422,13 +2483,15 @@ function exportDrillExcel() {
       Timestamp: new Date(item.timestamp).toLocaleString('id-ID')
     }))
   );
+
+  // Buat workbook + nama sheet
   const wb = XLSX.utils.book_new();
-  const sheetName = (unit || 'Unit').toString().slice(0, 28) || 'Data';
+  const sheetName = (_drillCustomData ? 'Distribusi' : (_selectedUnit || 'Unit')).toString().slice(0, 28) || 'Data';
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
-  const fname = `Mandor_${region || 'ALL'}_${unit || 'ALL'}.xlsx`.replace(/[\\/:*?"<>|]+/g, '_');
+
+  // Simpan file
   XLSX.writeFile(wb, fname);
 }
-
 
 function focusNipField() {
   const nip = document.getElementById("input-nip");
@@ -2600,4 +2663,36 @@ function updateSortIndicators() {
       th.textContent = base;
     }
   });
+}
+
+function openDistributionDrill(bucketIndex) {
+  // Safety
+  const bucket = SCORE_BUCKETS[bucketIndex];
+  if (!bucket) return;
+
+  // Data sumber = _dashData (mengikuti filter dashboard aktif)
+  const data = _dashData.filter(x => {
+    const t = Number(x.totalNilai || 0);
+    return t >= bucket.min && t <= bucket.max;
+  });
+
+  _drillCustomData  = data;               // aktifkan mode distribusi
+  _drillCustomTitle = `Distribusi ${bucket.label}`;
+  _drillLevel       = 'table';
+  _drillSearch      = '';
+  _drillPageSize    = 20;
+  _drillCurrentPage = 1;
+
+  if (!_drillModal) {
+    _drillModal = new bootstrap.Modal(document.getElementById('drilldownModal'));
+  }
+
+  document.getElementById('drilldownModalLabel').textContent = _drillCustomTitle;
+  document.getElementById('drill-controls').classList.remove('d-none');
+  document.getElementById('drill-pagination-wrap').classList.remove('d-none');
+  document.getElementById('drill-search').value = '';
+  document.getElementById('drill-pagesize').value = '20';
+
+  renderDrillTable();
+  _drillModal.show();
 }
