@@ -11,28 +11,65 @@ let filteredNilaiData = [];
 let _chartTop10 = null;
 let _chartDistribusi = null;
 
+// ===== Session (3 hari) =====
+const SESSION_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+function saveSession(user) {
+  const payload = { user, expiresAt: Date.now() + SESSION_TTL_MS };
+  localStorage.setItem('sessionUser', JSON.stringify(payload));
+}
+
+function loadSession() {
+  try {
+    const raw = localStorage.getItem('sessionUser');
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    if (!obj || !obj.expiresAt || obj.expiresAt < Date.now()) {
+      localStorage.removeItem('sessionUser');
+      return null;
+    }
+    return obj.user;
+  } catch {
+    return null;
+  }
+}
+
+function clearSession() {
+  localStorage.removeItem('sessionUser');
+}
+
 
 // Konfigurasi Google Apps Script
 // GANTI URL_INI dengan URL Web App Google Apps Script Anda
 const GAS_URL =
-  "https://script.google.com/macros/s/AKfycbwqgye_c_WXmcIpUFvIXJ7pRl8G_RSMS9WyuOXS7YdSNK-2TtQPnhqwBNSBq1eURs8/exec";
+  "https://script.google.com/macros/s/AKfycbwu5QTgQ_S7g5OjnHpBrdxtICaZ1_ZQ2rV5dOU7iJjn1ENLn1CuPgKFQvwEbb98tbQ6/exec";
 
 // Initialize application
 document.addEventListener("DOMContentLoaded", function () {
-  // Show login modal
+    // Auto-login jika sesi valid
+  const sessionUser = loadSession();
+  if (sessionUser) {
+    currentUser = sessionUser;
+    document.getElementById("current-user").textContent = currentUser.username;
+    const cuMobile = document.getElementById("current-user-mobile");
+    if (cuMobile) cuMobile.textContent = currentUser.username;
+
+    showPage("dashboard");
+    updateUIForUserRole();
+    initializeDefaultAdmin();
+    loadDataFromStorage();
+    setupEventListeners();
+    initializeUI();
+    return; // tidak perlu tampilkan modal login
+  }
+
+  // TIDAK ada sesi → Show login modal
   const loginModal = new bootstrap.Modal(document.getElementById("loginModal"));
   loginModal.show();
 
-  // Initialize default admin user
   initializeDefaultAdmin();
-
-  // Load data from localStorage
   loadDataFromStorage();
-
-  // Set up event listeners
   setupEventListeners();
-
-  // Initialize UI
   initializeUI();
 });
 
@@ -276,6 +313,9 @@ async function handleLogin(e) {
         const cuMobile = document.getElementById("current-user-mobile");
         if (cuMobile) cuMobile.textContent = currentUser.username;
 
+      // simpan sesi 3 hari
+        saveSession(currentUser);
+
       // Hide login modal
       const loginModal = bootstrap.Modal.getInstance(
         document.getElementById("loginModal")
@@ -319,6 +359,7 @@ document.getElementById("login-form").addEventListener("submit", handleLogin);
 
 // Handle logout
 function handleLogout() {
+  clearSession();
   currentUser = null;
   document.getElementById("login-username").value = "";
   document.getElementById("login-password").value = "";
@@ -1191,45 +1232,32 @@ function updateSyncInfo() {
 }
 
 // Fungsi untuk sync users ke Google Sheet
-async function syncUsersToGoogleSheets() {
+async function syncUsersToGoogleSheets(patch) {
   try {
     showProgressModal("Menyinkronisasi data user ke Google Sheet...");
 
+    const toSend = Array.isArray(patch) && patch.length ? patch : users;
+
     const response = await fetch(GAS_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "text/plain;charset=utf-8",
-      },
-      body: JSON.stringify({
-        action: "syncUsers",
-        users: users,
-      }),
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({ action: "syncUsers", users: toSend })
     });
 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const result = await response.json();
 
     hideProgressModal();
-
-    if (result.status === "success") {
-      return true;
-    } else {
-      throw new Error(result.message || "Gagal sync users");
-    }
+    if (result.status === "success") return true;
+    throw new Error(result.message || "Gagal sync users");
   } catch (error) {
     hideProgressModal();
     console.error("Error syncing users:", error);
-    Swal.fire({
-      icon: "error",
-      title: "Sync User Gagal",
-      text: "Terjadi kesalahan: " + error.message,
-    });
+    Swal.fire({ icon: "error", title: "Sync User Gagal", text: "Terjadi kesalahan: " + error.message });
     return false;
   }
 }
+
 // =====  clearLocalDataWithPassword =====
 async function clearLocalDataWithPassword() {
   if (!currentUser || !currentUser.username) {
@@ -1509,89 +1537,84 @@ function editUser(username) {
 
 // Delete user dengan sync ke Google Sheet
 async function deleteUser(username) {
+  if (!username) return;
+
   if (username === "admin") {
-    Swal.fire({
-      icon: "error",
-      title: "Tidak Dapat Menghapus",
-      text: "User admin tidak dapat dihapus!",
-    });
+    Swal.fire({ icon: "error", title: "Tidak Dapat Menghapus", text: "User admin tidak dapat dihapus!" });
     return;
   }
 
   const userToDelete = users.find((u) => u.username === username);
-  if (!userToDelete) return;
+  if (!userToDelete) {
+    Swal.fire({ icon: "error", title: "Tidak Ditemukan", text: "User tidak ditemukan di daftar." });
+    return;
+  }
 
-  Swal.fire({
+  const confirm = await Swal.fire({
     title: "Hapus User?",
     html: `
-            <div class="text-start">
-                <p>User yang dihapus tidak dapat dikembalikan!</p>
-                <div class="alert alert-warning">
-                    <strong>Detail User:</strong><br>
-                    Username: <strong>${userToDelete.username}</strong><br>
-                    Role: <strong>${userToDelete.role}</strong><br>
-                    Region: <strong>${
-                      userToDelete.region || "Semua"
-                    }</strong><br>
-                    Unit: <strong>${userToDelete.unit || "Semua"}</strong>
-                </div>
-            </div>
-        `,
+      <div class="text-start">
+        <p>User yang dihapus <b>benar-benar</b> akan dihapus dari Google Sheet.</p>
+        <div class="alert alert-warning">
+          <strong>Detail User:</strong><br>
+          Username: <strong>${userToDelete.username}</strong><br>
+          Role: <strong>${userToDelete.role}</strong><br>
+          Region: <strong>${userToDelete.region || "Semua"}</strong><br>
+          Unit: <strong>${userToDelete.unit || "Semua"}</strong>
+        </div>
+      </div>
+    `,
     icon: "warning",
     showCancelButton: true,
     confirmButtonColor: "#d33",
     cancelButtonColor: "#3085d6",
     confirmButtonText: "Ya, Hapus!",
-    cancelButtonText: "Batal",
-    showLoaderOnConfirm: true,
-    preConfirm: async () => {
-      try {
-        // Hapus dari array users
-        users = users.filter((u) => u.username !== username);
-
-        // Simpan ke localStorage
-        localStorage.setItem("users", JSON.stringify(users));
-
-        // Sync ke Google Sheet
-        const syncSuccess = await syncUsersToGoogleSheets();
-
-        if (!syncSuccess) {
-          throw new Error("Gagal sync ke Google Sheet");
-        }
-
-        return {
-          success: true,
-        };
-      } catch (error) {
-        Swal.showValidationMessage(`Gagal menghapus: ${error.message}`);
-        return {
-          success: false,
-          error: error.message,
-        };
-      }
-    },
-  }).then(async (result) => {
-    if (result.isConfirmed) {
-      if (result.value.success) {
-        // Refresh table
-        await renderUserTable();
-
-        Swal.fire({
-          icon: "success",
-          title: "Terhapus!",
-          text: "User telah berhasil dihapus.",
-          timer: 2000,
-          showConfirmButton: false,
-        });
-      } else {
-        Swal.fire({
-          icon: "error",
-          title: "Gagal Menghapus",
-          text: result.value.error || "Terjadi kesalahan saat menghapus user",
-        });
-      }
-    }
+    cancelButtonText: "Batal"
   });
+
+  if (!confirm.isConfirmed) return;
+
+  try {
+    showProgressModal("Menghapus user...");
+    const resp = await fetch(GAS_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify({
+        action: "deleteUsers",
+        usernames: [username]
+      })
+    });
+    const json = await resp.json();
+    hideProgressModal();
+
+    if (json.status !== "success") {
+      throw new Error(json.message || "Gagal menghapus user.");
+    }
+
+    const { deleted, skipped, details } = json.data || {};
+    const info = details && details[0];
+
+    if (deleted >= 1 && info?.ok) {
+      // Hapus dari cache lokal
+      users = users.filter(u => u.username !== username);
+      localStorage.setItem("users", JSON.stringify(users));
+
+      await Swal.fire({ icon: "success", title: "Terhapus!", text: `User ${username} telah dihapus.` });
+
+      // Refresh tampilan dari server agar konsisten
+      await renderUserTable();
+    } else {
+      await Swal.fire({
+        icon: "error",
+        title: "Gagal Menghapus",
+        text: info?.reason ? `Alasan: ${info.reason}` : "Tidak ada baris yang terhapus."
+      });
+    }
+  } catch (err) {
+    hideProgressModal();
+    console.error(err);
+    Swal.fire({ icon: "error", title: "Gagal", text: String(err.message || err) });
+  }
 }
 
 // Save user dengan sync ke Google Sheet
@@ -1679,8 +1702,13 @@ async function saveUser() {
       // Simpan ke localStorage
       localStorage.setItem("users", JSON.stringify(users));
 
-      // Sync ke Google Sheet
-      const syncSuccess = await syncUsersToGoogleSheets();
+        // Tentukan patch user yang dikirim
+        const patchUser = id
+    ? users.find(u => u.username === id)              // edit
+    : { username, password, role, region, unit, status }; // user baru
+
+        // Sync ke Google Sheet
+      const syncSuccess = await syncUsersToGoogleSheets([patchUser]);
 
       if (syncSuccess) {
         const userModal = bootstrap.Modal.getInstance(
